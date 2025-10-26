@@ -1,0 +1,12 @@
+pce:
+  planning_groups:
+    - manipulator
+    - arm
+  
+  manipulator:
+    pce_planner:
+      num_samples: 3000
+      num_iterations: 10
+      eta: 1.0
+      temperature: 1.5
+      convergence_threshold: 0.01

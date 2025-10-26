@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>pce_ros</name>
+  <version>0.1.0</version>
+  <description>PCE motion planner for MoveIt</description>
+  
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>Apache 2.0</license>
+  
+  <buildtool_depend>catkin</buildtool_depend>
+  
+  <depend>moveit_core</depend>
+  <depend>moveit_ros_planning</depend>
+  <depend>pluginlib</depend>
+  <depend>roscpp</depend>
+  <depend>geometric_shapes</depend>
+  <depend>eigen_stl_containers</depend>
+  <depend>visualization_msgs</depend>
+  
+  <!-- CRITICAL: Export the plugin -->
+  <export>
+    <moveit_core plugin="${prefix}/pce_planner_plugin.xml"/>
+  </export>
+</package>
