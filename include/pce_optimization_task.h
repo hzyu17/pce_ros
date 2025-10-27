@@ -62,6 +62,13 @@ public:
   
   virtual ~PCEOptimizationTask();
 
+
+  void setVisualizer(std::shared_ptr<PCEVisualization> viz)
+  {
+    visualizer_ = viz;
+    ROS_INFO("PCEOptimizationTask: Visualizer set");
+  }
+
   /**
    * @brief Set the motion planning request
    * @param planning_scene Planning scene with collision world
@@ -101,8 +108,7 @@ protected:
   // Signed Distance Field
   std::shared_ptr<distance_field::PropagationDistanceField> distance_field_;
 
-  // Visualization (composition - utility object)
-  std::unique_ptr<PCEVisualization> visualizer_;
+  std::shared_ptr<PCEVisualization> visualizer_;
 
   float collision_clearance_ = 0.05f;  // Safety margin (epsilon)
   float collision_threshold_ = 0.07f;   // Max distance to consider

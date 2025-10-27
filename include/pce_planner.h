@@ -32,7 +32,8 @@ public:
    */
   PCEPlanner(const std::string& group,
              const XmlRpc::XmlRpcValue& config,
-             const moveit::core::RobotModelConstPtr& model);
+             const moveit::core::RobotModelConstPtr& model,
+             std::shared_ptr<PCEVisualization> visualizer = nullptr);
   
   virtual ~PCEPlanner();
 
@@ -74,6 +75,10 @@ public:
                             std::map<std::string, XmlRpc::XmlRpcValue>& config,
                             std::string param = "pce");
 
+  void setVisualizer(std::shared_ptr<PCEVisualization> viz) {
+    visualizer_ = viz;
+  }
+
 protected:
   // Setup
   void setup();
@@ -103,6 +108,8 @@ protected:
   
   // ROS
   ros::NodeHandlePtr nh_;
+
+  std::shared_ptr<PCEVisualization> visualizer_;
 };
 
 } // namespace pce_ros

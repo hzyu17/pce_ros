@@ -7,14 +7,25 @@ namespace pce_ros
 PCEPlanner::PCEPlanner(
     const std::string& group,
     const XmlRpc::XmlRpcValue& config,
-    const moveit::core::RobotModelConstPtr& model)
+    const moveit::core::RobotModelConstPtr& model,
+    std::shared_ptr<PCEVisualization> visualizer)
   : planning_interface::PlanningContext("PCE", group)
   , config_(config)
   , robot_model_(model)
   , group_name_(group)
+  , visualizer_(visualizer)
 {
   ROS_INFO("=== PCEPlanner constructor ===");
   ROS_INFO("  Group name: '%s'", group.c_str());
+
+  if (visualizer_)
+  {
+    ROS_INFO("  Visualizer provided in constructor");
+  }
+  else
+  {
+    ROS_WARN("  No visualizer provided in constructor");
+  }
 
   setup();
 }
@@ -26,15 +37,28 @@ PCEPlanner::~PCEPlanner()
 void PCEPlanner::setup()
 { 
 
-  ROS_INFO("PCEPlanner constructor called");
+  ROS_INFO("=== PCEPlanner::setup() ===");
+  ROS_INFO("  Group name: '%s'", group_name_.c_str());
 
   // Create optimization task
   pce_task_ = std::make_shared<PCEOptimizationTask>(
       robot_model_, 
       group_name_,
-      config_); 
+      config_
+  ); 
 
   ROS_INFO("PCEOptimizationTask created");
+
+  // Pass visualizer to task
+  if (visualizer_)
+  {
+    ROS_INFO("Passing visualizer to PCEOptimizationTask");
+    pce_task_->setVisualizer(visualizer_);
+  }
+  else
+  {
+    ROS_WARN("No visualizer available for PCEOptimizationTask");
+  }
   
   // Create PCE planner
   pce_planner_ = std::make_shared<ProximalCrossEntropyMotionPlanner>(pce_task_);

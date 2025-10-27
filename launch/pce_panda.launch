@@ -1,0 +1,10 @@
+<launch>
+  <arg name="fake_execution_type" default="interpolate" />
+  
+  <include file="$(find pce_ros)/launch/pce_moveit_generic.launch">
+    <arg name="robot_description_package" value="$(find panda_moveit_config)" />
+    <arg name="base_frame" value="world" />
+    <arg name="robot_base_link" value="panda_link0" />
+    <arg name="fake_execution_type" value="$(arg fake_execution_type)" />
+  </include>
+</launch>

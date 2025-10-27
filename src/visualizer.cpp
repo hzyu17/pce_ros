@@ -8,15 +8,31 @@ PCEVisualization::PCEVisualization(const VisualizationConfig& config, ros::NodeH
   : config_(config)
   , nh_(nh)
 {
+  ROS_ERROR("========================================");
+  ROS_ERROR("PCEVisualization constructor START");
+  ROS_ERROR("  NodeHandle namespace: %s", nh_.getNamespace().c_str());
+  ROS_ERROR("  collision_spheres_topic: %s", config_.collision_spheres_topic.c_str());
+  ROS_ERROR("========================================");
+
   // Create publishers
   collision_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
-      config_.collision_spheres_topic, 10);
+      config_.collision_spheres_topic, 10, true);
+
+  ROS_ERROR("Collision marker publisher created!");
+  ROS_ERROR("  Topic name: %s", collision_marker_pub_.getTopic().c_str());
+  ROS_ERROR("  Is latched: %s", collision_marker_pub_.isLatched() ? "yes" : "no");
   
   trajectory_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
-      config_.trajectory_topic, 10);
+      config_.trajectory_topic, 10, true);
+
+  ROS_ERROR("Trajectory marker publisher created!");
+  ROS_ERROR("  Topic name: %s", trajectory_marker_pub_.getTopic().c_str());
   
   distance_field_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
       config_.distance_field_topic, 10);
+
+  ROS_ERROR("Distance field publisher created!");
+  ROS_ERROR("  Topic name: %s", distance_field_pub_.getTopic().c_str());
   
   ROS_INFO("PCE Visualization publishers created:");
   ROS_INFO("  - %s", config_.collision_spheres_topic.c_str());
@@ -24,6 +40,10 @@ PCEVisualization::PCEVisualization(const VisualizationConfig& config, ros::NodeH
   
   // Wait for publishers to be ready
   ros::Duration(0.5).sleep();
+
+  ROS_ERROR("========================================");
+  ROS_ERROR("PCEVisualization constructor END");
+  ROS_ERROR("========================================");
   
   ROS_INFO("PCE Visualization initialized (collision_spheres=%s, trajectory=%s)",
            config_.enable_collision_spheres ? "enabled" : "disabled",
@@ -198,7 +218,7 @@ void PCEVisualization::visualizeCollisionSpheres(
   if (collision_marker_pub_.getNumSubscribers() == 0)
   {
     ROS_WARN("No subscribers to /pce/collision_spheres");
-    // Still publish anyway for latched topics
+    return;
   }
 
   if (!config_.enable_collision_spheres || collision_marker_pub_.getNumSubscribers() == 0)

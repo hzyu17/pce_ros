@@ -11,28 +11,34 @@ PCEOptimizationTask::PCEOptimizationTask(
   : robot_model_ptr_(robot_model_ptr)
   , group_name_(group_name)
 {
+
+  ROS_ERROR("################################################");
+  ROS_ERROR("PCEOptimizationTask CONSTRUCTOR CALLED");
+  ROS_ERROR("  Group: %s", group_name.c_str());
+  ROS_ERROR("################################################");
+
   // TODO: Load cost function plugins from config (similar to STOMP)
   // For now, you can start with a simple built-in cost function
   
   ROS_INFO("PCEOptimizationTask initialized for group '%s'", group_name_.c_str());
 
-  // Create visualization utility
-  VisualizationConfig viz_config;
+//   // Create visualization utility
+//   VisualizationConfig viz_config;
   
-  if (config.hasMember("visualize_collision_spheres"))
-  {
-    viz_config.enable_collision_spheres = static_cast<bool>(config["visualize_collision_spheres"]);
-  }
-  if (config.hasMember("visualize_trajectory"))
-  {
-    viz_config.enable_trajectory = static_cast<bool>(config["visualize_trajectory"]);
-  }
+//   if (config.hasMember("visualize_collision_spheres"))
+//   {
+//     viz_config.enable_collision_spheres = static_cast<bool>(config["visualize_collision_spheres"]);
+//   }
+//   if (config.hasMember("visualize_trajectory"))
+//   {
+//     viz_config.enable_trajectory = static_cast<bool>(config["visualize_trajectory"]);
+//   }
   
-  viz_config.collision_clearance = collision_clearance_;
-  
-  ROS_INFO("Creating visualizer...");
-  visualizer_ = std::make_unique<PCEVisualization>(viz_config);
-  ROS_INFO("Visualizer created successfully");
+//   ROS_ERROR("=== ABOUT TO CREATE VISUALIZER ===");
+//   ROS_ERROR("Config enable_collision_spheres: %s", 
+//             config.hasMember("visualize_collision_spheres") ? "exists" : "missing");
+            
+//   viz_config.collision_clearance = collision_clearance_;
   
   ROS_INFO("PCEOptimizationTask initialized");
 
@@ -343,6 +349,7 @@ float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajecto
 
 float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) const
 {
+
   if (!distance_field_)
   {
     ROS_WARN_THROTTLE(1.0, "Distance field not initialized, using fallback collision checking");
@@ -466,8 +473,15 @@ void PCEOptimizationTask::postIteration(int iteration_number, float cost,
   ROS_INFO("Calling visualization...");
   
   // Visualize current trajectory
-  visualizer_->visualizeCollisionSpheres(trajectory, robot_model_ptr_, group_name_, distance_field_);
-  visualizer_->visualizeTrajectory(trajectory, robot_model_ptr_, group_name_, iteration_number);
+  if (visualizer_)
+  {
+    visualizer_->visualizeCollisionSpheres(trajectory, robot_model_ptr_, group_name_, distance_field_);
+    visualizer_->visualizeTrajectory(trajectory, robot_model_ptr_, group_name_, iteration_number);
+  }
+  else
+  {
+    ROS_ERROR_THROTTLE(5.0, "Visualizer is NULL!");
+  }
   
   ROS_INFO("Visualization called successfully");
   

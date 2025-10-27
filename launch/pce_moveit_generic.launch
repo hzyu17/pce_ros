@@ -1,0 +1,64 @@
+<launch>
+  <!-- Arguments - must be provided by caller -->
+  <arg name="robot_description_package" />
+  <arg name="fake_execution_type" default="interpolate" />
+  <arg name="base_frame" default="world" />
+  <arg name="robot_base_link" default="base_link" />
+  
+  <!-- Load robot description -->
+  <include file="$(arg robot_description_package)/launch/planning_context.launch">
+    <arg name="load_robot_description" value="true"/>
+  </include>
+
+  <!-- TF setup -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="virtual_joint_broadcaster" 
+        args="0 0 0 0 0 0 $(arg base_frame) $(arg robot_base_link)" />
+
+  <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
+    <rosparam param="source_list">[/move_group/fake_controller_joint_states]</rosparam>
+  </node>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" 
+        respawn="true" output="screen" />
+
+  <node name="move_group" pkg="moveit_ros_move_group" type="move_group" output="screen">
+    <param name="planning_plugin" value="pce_ros/PCEPlannerManager" />
+    <rosparam command="load" file="$(arg robot_description_package)/config/pce_planning.yaml"/>
+    
+    <param name="request_adapters" value="default_planner_request_adapters/AddTimeParameterization
+                                          default_planner_request_adapters/ResolveConstraintFrames
+                                          default_planner_request_adapters/FixWorkspaceBounds
+                                          default_planner_request_adapters/FixStartStateBounds
+                                          default_planner_request_adapters/FixStartStateCollision
+                                          default_planner_request_adapters/FixStartStatePathConstraints" />
+    
+    <param name="start_state_max_bounds_error" value="0.1" />
+    <param name="jiggle_fraction" value="0.05" />
+    <param name="capabilities" value="" />
+    <param name="disable_capabilities" value="" />
+    
+    <param name="planning_scene_monitor/publish_planning_scene" value="true" />
+    <param name="planning_scene_monitor/publish_geometry_updates" value="true" />
+    <param name="planning_scene_monitor/publish_state_updates" value="true" />
+    <param name="planning_scene_monitor/publish_transforms_updates" value="true" />
+    
+    <param name="moveit_manage_controllers" value="true" />
+    <param name="trajectory_execution/allowed_execution_duration_scaling" value="1.2" />
+    <param name="trajectory_execution/allowed_goal_duration_margin" value="0.5" />
+    <param name="trajectory_execution/allowed_start_tolerance" value="0.01" />
+    <param name="trajectory_execution/execution_duration_monitoring" value="false" />
+    <param name="moveit_controller_manager" value="moveit_fake_controller_manager/MoveItFakeControllerManager" />
+    
+    <!-- Load original fake controllers -->
+    <rosparam command="load" file="$(arg robot_description_package)/config/fake_controllers.yaml" />
+  </node>
+
+  <!-- Python script to fix controller types dynamically -->
+  <node name="fix_fake_controllers" pkg="pce_ros" type="fix_fake_controllers.py" output="screen">
+    <param name="fake_execution_type" value="$(arg fake_execution_type)" />
+  </node>
+
+  <include file="$(arg robot_description_package)/launch/moveit_rviz.launch">
+    <arg name="rviz_config" value="$(arg robot_description_package)/launch/moveit.rviz"/>
+  </include>
+</launch>
