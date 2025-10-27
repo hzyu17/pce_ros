@@ -79,6 +79,57 @@ void PCEPlanner::setup()
   ROS_INFO("PCEPlanner setup complete for group '%s'", getGroupName().c_str());
 }
 
+
+void PCEPlanner::setMotionPlanRequest(const planning_interface::MotionPlanRequest& req)
+{
+  request_ = req;
+  
+  // Important: Pass planning scene to task BEFORE solving
+  if (pce_task_ && planning_scene_)
+  {
+    pce_task_->setPlanningScene(planning_scene_);
+  }
+}
+
+
+
+void PCEPlanner::setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene)
+{
+  ROS_INFO("PCEPlanner::setPlanningScene called");
+  
+  // Store the planning scene
+  planning_scene_ = scene;
+  
+  // DEBUG: What's in the scene?
+  if (scene)
+  {
+    const collision_detection::WorldConstPtr& world = scene->getWorld();
+    if (world)
+    {
+      std::vector<std::string> ids = world->getObjectIds();
+      ROS_INFO("  PCEPlanner received planning scene with %zu objects:", ids.size());
+      for (const auto& id : ids)
+      {
+        auto obj = world->getObject(id);
+        if (obj && !obj->shape_poses_.empty())
+        {
+          const Eigen::Vector3d& pos = obj->shape_poses_[0].translation();
+          ROS_INFO("    %s at [%.3f, %.3f, %.3f]", id.c_str(), pos.x(), pos.y(), pos.z());
+        }
+      }
+    }
+  }
+  
+  // Pass to optimization task if it exists
+  if (pce_task_)
+  {
+    pce_task_->setPlanningScene(scene);
+  }
+  
+  ROS_INFO("PCEPlanner::setPlanningScene complete");
+}
+
+
 bool PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
 {
   ROS_INFO("=== PCEPlanner::solve() CALLED ===");

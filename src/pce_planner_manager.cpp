@@ -78,6 +78,40 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
     const planning_interface::MotionPlanRequest& req,
     moveit_msgs::MoveItErrorCodes& error_code) const
 {
+  ROS_INFO("=== PCEPlannerManager::getPlanningContext ===");
+  
+  // DEBUG: Check what's in the planning scene HERE (entry point)
+  if (planning_scene)
+  {
+    const collision_detection::WorldConstPtr& world = planning_scene->getWorld();
+    if (world)
+    {
+      std::vector<std::string> ids = world->getObjectIds();
+      ROS_INFO("Planning scene passed to getPlanningContext has %zu objects:", ids.size());
+      for (const auto& id : ids)
+      {
+        auto obj = world->getObject(id);
+        if (obj && !obj->shape_poses_.empty())
+        {
+          const Eigen::Vector3d& pos = obj->shape_poses_[0].translation();
+          ROS_INFO("  %s at [%.3f, %.3f, %.3f]", id.c_str(), pos.x(), pos.y(), pos.z());
+        }
+        else if (obj)
+        {
+          ROS_INFO("  %s (no poses or shapes)", id.c_str());
+        }
+      }
+    }
+    else
+    {
+      ROS_ERROR("World is NULL in planning scene!");
+    }
+  }
+  else
+  {
+    ROS_ERROR("Planning scene is NULL!");
+  }
+  
   if (req.group_name.empty())
   {
     ROS_ERROR("PCEPlannerManager: No planning group specified");
@@ -95,11 +129,12 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
 
   try
   {
-    auto planner = std::make_shared<PCEPlanner>(req.group_name, 
-                                                config_it->second, 
-                                                robot_model_,
-                                                visualizer_
-                                              );
+    auto planner = std::make_shared<PCEPlanner>(
+        req.group_name,
+        config_it->second,
+        robot_model_,
+        visualizer_
+    );
 
     if (!planner->canServiceRequest(req))
     {
@@ -108,7 +143,6 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
       return planning_interface::PlanningContextPtr();
     }
 
-    // planner->setVisualizer(visualizer_);
     planner->setPlanningScene(planning_scene);
     planner->setMotionPlanRequest(req);
 
@@ -122,6 +156,7 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
     return planning_interface::PlanningContextPtr();
   }
 }
+
 
 bool PCEPlannerManager::canServiceRequest(const moveit_msgs::MotionPlanRequest& req) const
 {

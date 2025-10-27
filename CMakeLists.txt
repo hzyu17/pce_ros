@@ -15,13 +15,17 @@ find_package(catkin REQUIRED COMPONENTS
   eigen_stl_containers
   visualization_msgs
   tf2_ros
+  tf2_eigen
 )
 
 find_package(yaml-cpp REQUIRED)
 
 catkin_package(
   LIBRARIES pce_ros
-  CATKIN_DEPENDS moveit_core moveit_ros_planning pluginlib
+  CATKIN_DEPENDS 
+    moveit_core 
+    moveit_ros_planning 
+    pluginlib 
   DEPENDS 
     EIGEN3
     YAML_CPP

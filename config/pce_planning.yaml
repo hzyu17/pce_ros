@@ -6,7 +6,11 @@ pce:
   manipulator:
     pce_planner:
       num_samples: 3000
-      num_iterations: 10
+      num_iterations: 15
       eta: 1.0
       temperature: 1.5
-      convergence_threshold: 0.01
+      convergence_threshold: 0.0001
+
+  panda_arm:
+    collision_clearance: 0.10  
+    collision_threshold: 0.15  

@@ -79,6 +79,11 @@ public:
     visualizer_ = viz;
   }
 
+
+  void setMotionPlanRequest(const planning_interface::MotionPlanRequest& req);
+
+  void setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene);
+
 protected:
   // Setup
   void setup();

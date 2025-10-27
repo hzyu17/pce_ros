@@ -202,7 +202,7 @@ void PCEVisualization::visualizeCollisionSpheres(
     const Trajectory& trajectory,
     const moveit::core::RobotModelConstPtr& robot_model,
     const std::string& group_name,
-    const std::shared_ptr<distance_field::PropagationDistanceField>& distance_field) const
+    const distance_field::DistanceFieldConstPtr& distance_field) const
 {
 
   ROS_INFO("visualizeCollisionSpheres called");

@@ -1,4 +1,7 @@
 #include "pce_optimization_task.h"
+#include <cmath>
+#include <tf2_eigen/tf2_eigen.h>
+#include <moveit_msgs/CollisionObject.h>
 
 
 namespace pce_ros
@@ -22,23 +25,32 @@ PCEOptimizationTask::PCEOptimizationTask(
   
   ROS_INFO("PCEOptimizationTask initialized for group '%s'", group_name_.c_str());
 
-//   // Create visualization utility
-//   VisualizationConfig viz_config;
+  // Load parameters from config
+  collision_clearance_ = 0.05;  // Load from config
+  collision_threshold_ = 0.07;  // Load from config
+
+  // Load collision parameters from config
+  if (config.hasMember("collision_clearance"))
+  {
+    collision_clearance_ = static_cast<double>(config["collision_clearance"]);
+  }
+  else
+  {
+    collision_clearance_ = 0.05;  // 5cm default
+  }
   
-//   if (config.hasMember("visualize_collision_spheres"))
-//   {
-//     viz_config.enable_collision_spheres = static_cast<bool>(config["visualize_collision_spheres"]);
-//   }
-//   if (config.hasMember("visualize_trajectory"))
-//   {
-//     viz_config.enable_trajectory = static_cast<bool>(config["visualize_trajectory"]);
-//   }
+  if (config.hasMember("collision_threshold"))
+  {
+    collision_threshold_ = static_cast<double>(config["collision_threshold"]);
+  }
+  else
+  {
+    collision_threshold_ = 0.07;  // 7cm default
+  }
   
-//   ROS_ERROR("=== ABOUT TO CREATE VISUALIZER ===");
-//   ROS_ERROR("Config enable_collision_spheres: %s", 
-//             config.hasMember("visualize_collision_spheres") ? "exists" : "missing");
-            
-//   viz_config.collision_clearance = collision_clearance_;
+  ROS_INFO("PCEOptimizationTask initialized for group '%s'", group_name.c_str());
+  ROS_INFO("  Collision clearance: %.3f", collision_clearance_);
+  ROS_INFO("  Collision threshold: %.3f", collision_threshold_);
   
   ROS_INFO("PCEOptimizationTask initialized");
 
@@ -48,150 +60,318 @@ PCEOptimizationTask::~PCEOptimizationTask()
 {
 }
 
-void PCEOptimizationTask::createDistanceField()
+void PCEOptimizationTask::setPlanningScene(
+    const planning_scene::PlanningSceneConstPtr& scene)
 {
-  if (!planning_scene_ptr_)
+  ROS_INFO("=== Setting up planning scene (CHOMP approach) ===");
+  
+  if (!scene)
   {
-    ROS_ERROR("Cannot create distance field without planning scene");
+    ROS_ERROR("Planning scene is NULL!");
     return;
   }
   
-  // Define workspace bounds
-  double size_x = 3.0;
-  double size_y = 3.0;
-  double size_z = 3.0;
-  double resolution = 0.02;  // 2cm resolution
-  double origin_x = -1.5;
-  double origin_y = -1.5;
-  double origin_z = -1.5;
-  
-  // Create distance field
-  distance_field_.reset(new distance_field::PropagationDistanceField(
-      size_x, size_y, size_z,
-      resolution,
-      origin_x, origin_y, origin_z,
-      0.4  // max propagation distance
-  ));
-  
-  // Get collision objects
-  std::vector<std::string> object_ids;
-  object_ids = planning_scene_ptr_->getWorld()->getObjectIds();
-  
-  ROS_INFO("Found %zu collision objects", object_ids.size());
-  
-  // Use Eigen-aligned vector
-  EigenSTL::vector_Vector3d obstacle_points;
-  
-  for (const std::string& object_id : object_ids)
+  // DEBUG: Check what's in the ORIGINAL scene before diff()
+  ROS_INFO("Checking ORIGINAL planning scene (before diff):");
+  const collision_detection::WorldConstPtr& original_world = scene->getWorld();
+  if (original_world)
   {
-    collision_detection::World::ObjectConstPtr object = 
-        planning_scene_ptr_->getWorld()->getObject(object_id);
-    
-    if (!object)
+    std::vector<std::string> original_ids = original_world->getObjectIds();
+    ROS_INFO("  Original world has %zu objects:", original_ids.size());
+    for (const auto& id : original_ids)
     {
-      continue;
-    }
-    
-    // Process each shape in the object
-    for (size_t i = 0; i < object->shapes_.size(); ++i)
-    {
-      const shapes::ShapeConstPtr& shape = object->shapes_[i];
-      const Eigen::Isometry3d& pose = object->shape_poses_[i];
-      
-      if (!shape)
+      auto obj = original_world->getObject(id);
+      if (obj && !obj->shape_poses_.empty())
       {
-        continue;
-      }
-      
-      // Create body using the correct API
-      std::unique_ptr<bodies::Body> body;
-      
-      switch (shape->type)
-      {
-        case shapes::BOX:
-          body.reset(new bodies::Box(shape.get()));
-          break;
-        case shapes::SPHERE:
-          body.reset(new bodies::Sphere(shape.get()));
-          break;
-        case shapes::CYLINDER:
-          body.reset(new bodies::Cylinder(shape.get()));
-          break;
-        case shapes::MESH:
-          body.reset(new bodies::ConvexMesh(shape.get()));
-          break;
-        default:
-          ROS_WARN("Unsupported shape type: %d", shape->type);
-          continue;
-      }
-      
-      if (!body)
-      {
-        continue;
-      }
-      
-      body->setPose(pose);
-      
-      // Get bounding sphere
-      bodies::BoundingSphere bsphere;
-      body->computeBoundingSphere(bsphere);
-      
-      // Sample points within bounding sphere
-      double min_x = bsphere.center.x() - bsphere.radius;
-      double max_x = bsphere.center.x() + bsphere.radius;
-      double min_y = bsphere.center.y() - bsphere.radius;
-      double max_y = bsphere.center.y() + bsphere.radius;
-      double min_z = bsphere.center.z() - bsphere.radius;
-      double max_z = bsphere.center.z() + bsphere.radius;
-      
-      for (double x = min_x; x <= max_x; x += resolution)
-      {
-        for (double y = min_y; y <= max_y; y += resolution)
-        {
-          for (double z = min_z; z <= max_z; z += resolution)
-          {
-            Eigen::Vector3d point(x, y, z);
-            if (body->containsPoint(point))
-            {
-              obstacle_points.push_back(point);
-            }
-          }
-        }
+        const Eigen::Vector3d& pos = obj->shape_poses_[0].translation();
+        ROS_INFO("    %s at [%.3f, %.3f, %.3f]", id.c_str(), pos.x(), pos.y(), pos.z());
       }
     }
-  }
-  
-  // Add points to distance field
-  if (!obstacle_points.empty())
-  {
-    distance_field_->addPointsToField(obstacle_points);
-    ROS_INFO("Distance field created with %zu obstacle voxels", obstacle_points.size());
   }
   else
   {
-    ROS_WARN("No obstacle points found - distance field is empty");
+    ROS_ERROR("  Original world is NULL!");
+  }
+  
+  // Create diff
+  planning_scene_ = scene->diff();
+  
+  // DEBUG: Check what's in the DIFF scene
+  ROS_INFO("Checking DIFF planning scene (after diff):");
+  const collision_detection::WorldConstPtr& diff_world = planning_scene_->getWorld();
+  if (diff_world)
+  {
+    std::vector<std::string> diff_ids = diff_world->getObjectIds();
+    ROS_INFO("  Diff world has %zu objects:", diff_ids.size());
+    for (const auto& id : diff_ids)
+    {
+      auto obj = diff_world->getObject(id);
+      if (obj && !obj->shape_poses_.empty())
+      {
+        const Eigen::Vector3d& pos = obj->shape_poses_[0].translation();
+        ROS_INFO("    %s at [%.3f, %.3f, %.3f]", id.c_str(), pos.x(), pos.y(), pos.z());
+      }
+    }
+  }
+  else
+  {
+    ROS_ERROR("  Diff world is NULL!");
+  }
+  
+  // Create distance field using CHOMP's approach
+  createDistanceFieldFromPlanningScene();
+  
+  ROS_INFO("=== Planning scene setup complete ===");
+}
+
+
+void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
+{
+  ROS_INFO("Creating distance field (CHOMP approach with MoveIt's PropagationDistanceField)...");
+  
+  // Distance field parameters (same as CHOMP uses)
+  double size_x = 3.0;
+  double size_y = 3.0;
+  double size_z = 4.0;
+  double resolution = 0.02;  // 2cm resolution (CHOMP default)
+  double origin_x = -1.5;
+  double origin_y = -1.5;
+  double origin_z = -2.0;
+  double max_distance = 1.0;  // Max distance to compute (optimization)
+  
+  // Create MoveIt's PropagationDistanceField (this is what CHOMP uses!)
+  distance_field_ = std::make_shared<distance_field::PropagationDistanceField>(
+      size_x, size_y, size_z,
+      resolution,
+      origin_x, origin_y, origin_z,
+      max_distance
+  );
+    
+  // Add collision objects from planning scene
+  addCollisionObjectsToDistanceField();
+}
+
+void PCEOptimizationTask::addCollisionObjectsToDistanceField()
+{
+  if (!distance_field_ || !planning_scene_)
+  {
+    ROS_ERROR("Distance field or planning scene is NULL!");
+    return;
+  }
+  
+  const collision_detection::WorldConstPtr& world = planning_scene_->getWorld();
+  
+  if (!world)
+  {
+    ROS_WARN("World is NULL!");
+    return;
+  }
+  
+  std::vector<std::string> object_ids = world->getObjectIds();
+  ROS_INFO("Adding %zu collision objects to distance field:", object_ids.size());
+  
+  int total_points = 0;
+  
+  for (const auto& id : object_ids)
+  {
+    collision_detection::World::ObjectConstPtr obj = world->getObject(id);
+    if (!obj)
+    {
+      ROS_WARN("  Object '%s' is NULL!", id.c_str());
+      continue;
+    }
+        
+    // Try to get object pose from collision object message
+    // We need to query the planning scene for the collision object message
+    std::vector<moveit_msgs::CollisionObject> collision_objects;
+    planning_scene_->getCollisionObjectMsgs(collision_objects);
+    
+    Eigen::Isometry3d object_pose = Eigen::Isometry3d::Identity();
+    bool found_object_pose = false;
+    
+    for (const auto& co_msg : collision_objects)
+    {
+      if (co_msg.id == id)
+      {
+        // Found the message - get the object-level pose
+        tf2::fromMsg(co_msg.pose, object_pose);
+        found_object_pose = true;
+        break;
+      }
+    }
+    
+    if (!found_object_pose)
+    {
+      ROS_WARN("    Could not find collision object message for '%s', using identity", id.c_str());
+    }
+    
+    // Process shapes
+    for (size_t i = 0; i < obj->shapes_.size(); ++i)
+    {
+      const shapes::ShapeConstPtr& shape = obj->shapes_[i];
+      const Eigen::Isometry3d& shape_pose_relative = obj->shape_poses_[i];
+      
+      // COMPOSE: world_pose = object_pose * shape_pose_relative
+      Eigen::Isometry3d shape_pose_world = object_pose * shape_pose_relative;
+      
+      ROS_INFO("    Shape %zu world pose:", i);
+      ROS_INFO("      Position: [%.3f, %.3f, %.3f]",
+               shape_pose_world.translation().x(),
+               shape_pose_world.translation().y(),
+               shape_pose_world.translation().z());
+      
+      EigenSTL::vector_Vector3d points;
+      samplePointsFromShape(shape, shape_pose_world, distance_field_->getResolution(), points);
+      
+      if (!points.empty())
+      {
+        distance_field_->addPointsToField(points);
+        total_points += points.size();
+        ROS_INFO("    Added %zu points", points.size());
+      }
+    }
+  }
+  
+  ROS_INFO("Distance field populated with %d total points", total_points);
+  
+}
+
+
+void PCEOptimizationTask::samplePointsFromShape(
+    const shapes::ShapeConstPtr& shape,
+    const Eigen::Isometry3d& pose,
+    double resolution,
+    EigenSTL::vector_Vector3d& points)
+{
+  points.clear();
+  
+  if (!shape)
+  {
+    return;
+  }
+  
+  if (shape->type == shapes::BOX)
+  {
+    const shapes::Box* box = static_cast<const shapes::Box*>(shape.get());
+    
+    // Sample points throughout the box volume
+    int nx = std::max(5, (int)std::ceil(box->size[0] / resolution));
+    int ny = std::max(5, (int)std::ceil(box->size[1] / resolution));
+    int nz = std::max(5, (int)std::ceil(box->size[2] / resolution));
+    
+    for (int ix = 0; ix < nx; ++ix)
+    {
+      for (int iy = 0; iy < ny; ++iy)
+      {
+        for (int iz = 0; iz < nz; ++iz)
+        {
+          double x = -box->size[0]/2.0 + (box->size[0] * ix) / (nx - 1);
+          double y = -box->size[1]/2.0 + (box->size[1] * iy) / (ny - 1);
+          double z = -box->size[2]/2.0 + (box->size[2] * iz) / (nz - 1);
+          
+          Eigen::Vector3d local_pt(x, y, z);
+          Eigen::Vector3d world_pt = pose * local_pt;
+          points.push_back(world_pt);
+        }
+      }
+    }
+    
+    ROS_INFO("    Box [%.2f x %.2f x %.2f] at [%.2f, %.2f, %.2f]: %d points",
+             box->size[0], box->size[1], box->size[2],
+             pose.translation().x(), pose.translation().y(), pose.translation().z(),
+             (int)points.size());
+  }
+  else if (shape->type == shapes::SPHERE)
+  {
+    const shapes::Sphere* sphere = static_cast<const shapes::Sphere*>(shape.get());
+    
+    double radius = sphere->radius;
+    int n_phi = std::max(5, (int)std::ceil(radius / resolution));
+    int n_theta = n_phi * 2;
+    
+    for (int ip = 0; ip < n_phi; ++ip)
+    {
+      for (int it = 0; it < n_theta; ++it)
+      {
+        double phi = M_PI * ip / (n_phi - 1);
+        double theta = 2.0 * M_PI * it / n_theta;
+        
+        // Sample throughout volume, not just surface
+        for (int ir = 0; ir <= 3; ++ir)
+        {
+          double r = radius * ir / 3.0;
+          double x = r * sin(phi) * cos(theta);
+          double y = r * sin(phi) * sin(theta);
+          double z = r * cos(phi);
+          
+          Eigen::Vector3d local_pt(x, y, z);
+          Eigen::Vector3d world_pt = pose * local_pt;
+          points.push_back(world_pt);
+        }
+      }
+    }
+    
+    ROS_INFO("    Sphere radius %.2f at [%.2f, %.2f, %.2f]: %d points",
+             radius,
+             pose.translation().x(), pose.translation().y(), pose.translation().z(),
+             (int)points.size());
+  }
+  else if (shape->type == shapes::CYLINDER)
+  {
+    const shapes::Cylinder* cylinder = static_cast<const shapes::Cylinder*>(shape.get());
+    
+    double radius = cylinder->radius;
+    double length = cylinder->length;
+    
+    int n_r = std::max(3, (int)std::ceil(radius / resolution));
+    int n_theta = std::max(8, (int)std::ceil(2.0 * M_PI * radius / resolution));
+    int n_z = std::max(3, (int)std::ceil(length / resolution));
+    
+    for (int ir = 0; ir < n_r; ++ir)
+    {
+      double r = radius * ir / (n_r - 1);
+      for (int it = 0; it < n_theta; ++it)
+      {
+        double theta = 2.0 * M_PI * it / n_theta;
+        for (int iz = 0; iz < n_z; ++iz)
+        {
+          double x = r * cos(theta);
+          double y = r * sin(theta);
+          double z = -length/2.0 + length * iz / (n_z - 1);
+          
+          Eigen::Vector3d local_pt(x, y, z);
+          Eigen::Vector3d world_pt = pose * local_pt;
+          points.push_back(world_pt);
+        }
+      }
+    }
+    
+    ROS_INFO("    Cylinder r=%.2f, h=%.2f at [%.2f, %.2f, %.2f]: %d points",
+             radius, length,
+             pose.translation().x(), pose.translation().y(), pose.translation().z(),
+             (int)points.size());
+  }
+  else
+  {
+    ROS_WARN("    Unsupported shape type: %d", (int)shape->type);
   }
 }
 
 
-bool PCEOptimizationTask::setMotionPlanRequest(
-    const planning_scene::PlanningSceneConstPtr& planning_scene,
-    const moveit_msgs::MotionPlanRequest& req,
-    moveit_msgs::MoveItErrorCodes& error_code)
+double PCEOptimizationTask::getDistanceAtPoint(const Eigen::Vector3d& point) const
 {
-  planning_scene_ptr_ = planning_scene;
-  plan_request_ = req;
+  if (!distance_field_)
+  {
+    ROS_ERROR_THROTTLE(1.0, "Distance field is NULL!");
+    return 1000.0;  // Large distance
+  }
   
-  // Create/update distance field
-  createDistanceField();
-  
-  return true;
+  return distance_field_->getDistance(point.x(), point.y(), point.z());
 }
 
-
-// CHOMP-style obstacle cost function
 float PCEOptimizationTask::getObstacleCost(double distance) const
 {
+  // CHOMP's cost function
   const double epsilon = collision_clearance_;
   
   if (distance < 0.0)
@@ -213,20 +393,39 @@ float PCEOptimizationTask::getObstacleCost(double distance) const
 }
 
 
+bool PCEOptimizationTask::setMotionPlanRequest(
+    const planning_scene::PlanningSceneConstPtr& planning_scene,
+    const moveit_msgs::MotionPlanRequest& req,
+    moveit_msgs::MoveItErrorCodes& error_code)
+{
+  planning_scene_ptr_ = planning_scene;
+  plan_request_ = req;
+  
+  // Create/update distance field
+  // createDistanceField();
+  setPlanningScene(planning_scene);
+  
+  return true;
+}
+
+
 std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
     const moveit::core::RobotState& state) const
 {
   std::vector<Eigen::Vector3d> sphere_locations;
   
-  const moveit::core::JointModelGroup* jmg = 
+  const moveit::core::JointModelGroup* jmg =
       robot_model_ptr_->getJointModelGroup(group_name_);
   
   if (!jmg)
   {
+    ROS_ERROR_ONCE("Joint model group '%s' not found!", group_name_.c_str());
     return sphere_locations;
   }
   
   const std::vector<const moveit::core::LinkModel*>& links = jmg->getLinkModels();
+  
+  ROS_INFO_ONCE("Group '%s' has %zu links", group_name_.c_str(), links.size());
   
   for (const auto* link : links)
   {
@@ -236,40 +435,50 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
     const std::vector<shapes::ShapeConstPtr>& shapes = link->getShapes();
     const EigenSTL::vector_Isometry3d& shape_poses = link->getCollisionOriginTransforms();
     
+    ROS_INFO_ONCE("  Link '%s' has %zu shapes", link->getName().c_str(), shapes.size());
+    
+    if (shapes.empty())
+    {
+      // No shapes - add link origin as fallback
+      sphere_locations.push_back(link_transform.translation());
+      ROS_INFO_ONCE("    Added link origin as fallback");
+      continue;
+    }
+    
     for (size_t s = 0; s < shapes.size(); ++s)
     {
       const shapes::ShapeConstPtr& shape = shapes[s];
       Eigen::Isometry3d shape_transform = link_transform * shape_poses[s];
       
+      ROS_INFO_ONCE("    Shape %zu type: %d", s, (int)shape->type);
+      
       // Sample points based on shape type
       if (shape->type == shapes::CYLINDER)
       {
-        const shapes::Cylinder* cylinder = 
+        const shapes::Cylinder* cylinder =
             static_cast<const shapes::Cylinder*>(shape.get());
-        
         double radius = cylinder->radius;
         double length = cylinder->length;
         
         // Sample points along cylinder axis
-        int num_samples = std::max(3, static_cast<int>(length / 0.05)); // Every 5cm
-        
+        int num_samples = std::max(3, static_cast<int>(length / 0.05));
         for (int i = 0; i < num_samples; ++i)
         {
           double t = static_cast<double>(i) / (num_samples - 1);
           double z = -length/2 + t * length;
-          
           Eigen::Vector3d local_point(0, 0, z);
           Eigen::Vector3d world_point = shape_transform * local_point;
           sphere_locations.push_back(world_point);
         }
+        ROS_INFO_ONCE("      Added %d cylinder samples", num_samples);
       }
       else if (shape->type == shapes::SPHERE)
       {
-        const shapes::Sphere* sphere = 
+        const shapes::Sphere* sphere =
             static_cast<const shapes::Sphere*>(shape.get());
-        
         Eigen::Vector3d center = shape_transform.translation();
         sphere_locations.push_back(center);
+        ROS_INFO_ONCE("      Added sphere center");
       }
       else if (shape->type == shapes::BOX)
       {
@@ -281,7 +490,7 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
         double dz = box->size[2] / 2;
         
         std::vector<Eigen::Vector3d> local_points = {
-          Eigen::Vector3d(0, 0, 0),      // Center
+          Eigen::Vector3d(0, 0, 0), // Center
           Eigen::Vector3d(dx, dy, dz),
           Eigen::Vector3d(dx, dy, -dz),
           Eigen::Vector3d(dx, -dy, dz),
@@ -297,9 +506,24 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
           Eigen::Vector3d world_pt = shape_transform * local_pt;
           sphere_locations.push_back(world_pt);
         }
+        ROS_INFO_ONCE("      Added %zu box samples", local_points.size());
+      }
+      else if (shape->type == shapes::MESH)
+      {
+        // Mesh - just add the mesh origin for now
+        sphere_locations.push_back(shape_transform.translation());
+        ROS_INFO_ONCE("      Added mesh origin (type MESH)");
+      }
+      else
+      {
+        // Unknown shape - add origin
+        sphere_locations.push_back(shape_transform.translation());
+        ROS_INFO_ONCE("      Added origin for unknown shape type %d", (int)shape->type);
       }
     }
   }
+  
+  ROS_INFO_ONCE("Generated %zu total sphere locations", sphere_locations.size());
   
   return sphere_locations;
 }
@@ -349,44 +573,68 @@ float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajecto
 
 float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) const
 {
-
+  ROS_INFO_ONCE("=== computeCollisionCost CALLED ===");
+  
   if (!distance_field_)
   {
-    ROS_WARN_THROTTLE(1.0, "Distance field not initialized, using fallback collision checking");
-    // Fallback to simple collision checking
-    return computeCollisionCostSimple(trajectory);
+    ROS_WARN_THROTTLE(1.0, "Distance field not available in computeCollisionCost!");
+    return 0.0f;
   }
   
-  float total_cost = 0.0f;
+  ROS_INFO_ONCE("Distance field is available, computing collision cost...");
   
-  // Iterate over all waypoints in trajectory
+  float total_cost = 0.0f;
+  int collision_count = 0;
+  int near_collision_count = 0;
+  
   for (size_t i = 0; i < trajectory.nodes.size(); ++i)
   {
     moveit::core::RobotState state(robot_model_ptr_);
-    
     if (!trajectoryToRobotState(trajectory, i, state))
     {
       return std::numeric_limits<float>::infinity();
     }
     
-    // Get sphere locations on robot body
+    // Get sphere locations on robot
     std::vector<Eigen::Vector3d> sphere_locations = getSphereLocations(state);
     
-    // Accumulate cost from all body points
-    float waypoint_cost = 0.0f;
+    if (i == 0)
+    {
+      ROS_INFO_ONCE("Waypoint 0 has %zu sphere locations", sphere_locations.size());
+      if (!sphere_locations.empty())
+      {
+        ROS_INFO_ONCE("  First sphere at [%.3f, %.3f, %.3f]",
+                     sphere_locations[0].x(),
+                     sphere_locations[0].y(),
+                     sphere_locations[0].z());
+      }
+    }
     
     for (const Eigen::Vector3d& point : sphere_locations)
     {
       // Query signed distance from distance field
-      double distance = distance_field_->getDistance(point.x(), point.y(), point.z());
+      double distance = getDistanceAtPoint(point);
       
       // Apply CHOMP cost function
       float point_cost = getObstacleCost(distance);
-      waypoint_cost += point_cost;
+      
+      if (point_cost > 0.0f)
+      {
+        if (distance < 0.0)
+        {
+          collision_count++;
+        }
+        else
+        {
+          near_collision_count++;
+        }
+      }
+      
+      total_cost += point_cost;
     }
-    
-    total_cost += waypoint_cost;
   }
+  
+  ROS_INFO_ONCE("computeCollisionCost returning: %.4f", total_cost);
   
   return total_cost;
 }

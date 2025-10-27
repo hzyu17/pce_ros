@@ -9,7 +9,6 @@
 #include <moveit_msgs/MotionPlanRequest.h>
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/planning_scene/planning_scene.h>
-#include <moveit/distance_field/propagation_distance_field.h>
 #include <pce/PCEMotionPlanner.h>
 #include <pce/Trajectory.h>
 #include <pce/task.h>
@@ -19,6 +18,8 @@
 #include <eigen_stl_containers/eigen_stl_containers.h>
 #include <visualization_msgs/MarkerArray.h>
 #include "visualizer.h"
+// #include <distance_field/propagation_distance_field.h>
+#include <moveit/collision_detection/collision_tools.h>
 
 
 // Forward declarations for plugin types (you can adapt STOMP's or create your own)
@@ -96,17 +97,25 @@ public:
                   const PathNode& goal, size_t num_nodes, 
                   float total_time) override;
 
+  // Set planning scene and initialize distance field
+  void setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene);
+
 protected:
   // Robot environment
   std::string group_name_;
   moveit::core::RobotModelConstPtr robot_model_ptr_;
   planning_scene::PlanningSceneConstPtr planning_scene_ptr_;
+
+  // Distance field collision environment (like CHOMP uses)
+  planning_scene::PlanningScenePtr planning_scene_;  
+
+  // collision_detection::CollisionEnvDistanceField* df_collision_env_;
+  
+  // Direct access to distance field
+  std::shared_ptr<distance_field::PropagationDistanceField> distance_field_;
   
   // Motion plan request
   moveit_msgs::MotionPlanRequest plan_request_;
-
-  // Signed Distance Field
-  std::shared_ptr<distance_field::PropagationDistanceField> distance_field_;
 
   std::shared_ptr<PCEVisualization> visualizer_;
 
@@ -120,7 +129,7 @@ protected:
   // Helper: Convert Trajectory to joint states for collision checking
   bool trajectoryToRobotState(const Trajectory& trajectory, size_t timestep, moveit::core::RobotState& state) const;
 
-  void createDistanceField();
+  // void createDistanceField();
   
   std::vector<Eigen::Vector3d> getSphereLocations(const moveit::core::RobotState& state) const;
   
@@ -128,6 +137,19 @@ protected:
 
   // Collision cost computation based on simple collision checking query
   float computeCollisionCostSimple(const Trajectory& trajectory) const;
+
+
+  // Distance field setup (CHOMP approach)
+  void createDistanceFieldFromPlanningScene();
+  void addCollisionObjectsToDistanceField();
+  void samplePointsFromShape(
+      const shapes::ShapeConstPtr& shape,
+      const Eigen::Isometry3d& pose,
+      double resolution,
+      EigenSTL::vector_Vector3d& points);
+  
+  // Get signed distance at a point
+  double getDistanceAtPoint(const Eigen::Vector3d& point) const;
 
 };
 
