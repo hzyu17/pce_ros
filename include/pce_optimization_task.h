@@ -18,7 +18,6 @@
 #include <eigen_stl_containers/eigen_stl_containers.h>
 #include <visualization_msgs/MarkerArray.h>
 #include "visualizer.h"
-// #include <distance_field/propagation_distance_field.h>
 #include <moveit/collision_detection/collision_tools.h>
 
 
@@ -108,8 +107,6 @@ protected:
 
   // Distance field collision environment (like CHOMP uses)
   planning_scene::PlanningScenePtr planning_scene_;  
-
-  // collision_detection::CollisionEnvDistanceField* df_collision_env_;
   
   // Direct access to distance field
   std::shared_ptr<distance_field::PropagationDistanceField> distance_field_;
@@ -128,8 +125,6 @@ protected:
   
   // Helper: Convert Trajectory to joint states for collision checking
   bool trajectoryToRobotState(const Trajectory& trajectory, size_t timestep, moveit::core::RobotState& state) const;
-
-  // void createDistanceField();
   
   std::vector<Eigen::Vector3d> getSphereLocations(const moveit::core::RobotState& state) const;
   

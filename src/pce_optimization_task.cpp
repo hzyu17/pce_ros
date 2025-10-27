@@ -70,53 +70,9 @@ void PCEOptimizationTask::setPlanningScene(
     ROS_ERROR("Planning scene is NULL!");
     return;
   }
-  
-  // DEBUG: Check what's in the ORIGINAL scene before diff()
-  ROS_INFO("Checking ORIGINAL planning scene (before diff):");
-  const collision_detection::WorldConstPtr& original_world = scene->getWorld();
-  if (original_world)
-  {
-    std::vector<std::string> original_ids = original_world->getObjectIds();
-    ROS_INFO("  Original world has %zu objects:", original_ids.size());
-    for (const auto& id : original_ids)
-    {
-      auto obj = original_world->getObject(id);
-      if (obj && !obj->shape_poses_.empty())
-      {
-        const Eigen::Vector3d& pos = obj->shape_poses_[0].translation();
-        ROS_INFO("    %s at [%.3f, %.3f, %.3f]", id.c_str(), pos.x(), pos.y(), pos.z());
-      }
-    }
-  }
-  else
-  {
-    ROS_ERROR("  Original world is NULL!");
-  }
-  
+
   // Create diff
   planning_scene_ = scene->diff();
-  
-  // DEBUG: Check what's in the DIFF scene
-  ROS_INFO("Checking DIFF planning scene (after diff):");
-  const collision_detection::WorldConstPtr& diff_world = planning_scene_->getWorld();
-  if (diff_world)
-  {
-    std::vector<std::string> diff_ids = diff_world->getObjectIds();
-    ROS_INFO("  Diff world has %zu objects:", diff_ids.size());
-    for (const auto& id : diff_ids)
-    {
-      auto obj = diff_world->getObject(id);
-      if (obj && !obj->shape_poses_.empty())
-      {
-        const Eigen::Vector3d& pos = obj->shape_poses_[0].translation();
-        ROS_INFO("    %s at [%.3f, %.3f, %.3f]", id.c_str(), pos.x(), pos.y(), pos.z());
-      }
-    }
-  }
-  else
-  {
-    ROS_ERROR("  Diff world is NULL!");
-  }
   
   // Create distance field using CHOMP's approach
   createDistanceFieldFromPlanningScene();
@@ -126,9 +82,7 @@ void PCEOptimizationTask::setPlanningScene(
 
 
 void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
-{
-  ROS_INFO("Creating distance field (CHOMP approach with MoveIt's PropagationDistanceField)...");
-  
+{  
   // Distance field parameters (same as CHOMP uses)
   double size_x = 3.0;
   double size_y = 3.0;
@@ -401,8 +355,6 @@ bool PCEOptimizationTask::setMotionPlanRequest(
   planning_scene_ptr_ = planning_scene;
   plan_request_ = req;
   
-  // Create/update distance field
-  // createDistanceField();
   setPlanningScene(planning_scene);
   
   return true;
@@ -563,8 +515,6 @@ float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajecto
       total_cost += 1000.0f;
     }
     
-    // Optional: Check distance to obstacles for smooth costs
-    // planning_scene_ptr_->distanceToCollision(state);
   }
   
   return total_cost;

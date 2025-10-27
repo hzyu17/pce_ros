@@ -80,38 +80,6 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
 {
   ROS_INFO("=== PCEPlannerManager::getPlanningContext ===");
   
-  // DEBUG: Check what's in the planning scene HERE (entry point)
-  if (planning_scene)
-  {
-    const collision_detection::WorldConstPtr& world = planning_scene->getWorld();
-    if (world)
-    {
-      std::vector<std::string> ids = world->getObjectIds();
-      ROS_INFO("Planning scene passed to getPlanningContext has %zu objects:", ids.size());
-      for (const auto& id : ids)
-      {
-        auto obj = world->getObject(id);
-        if (obj && !obj->shape_poses_.empty())
-        {
-          const Eigen::Vector3d& pos = obj->shape_poses_[0].translation();
-          ROS_INFO("  %s at [%.3f, %.3f, %.3f]", id.c_str(), pos.x(), pos.y(), pos.z());
-        }
-        else if (obj)
-        {
-          ROS_INFO("  %s (no poses or shapes)", id.c_str());
-        }
-      }
-    }
-    else
-    {
-      ROS_ERROR("World is NULL in planning scene!");
-    }
-  }
-  else
-  {
-    ROS_ERROR("Planning scene is NULL!");
-  }
-  
   if (req.group_name.empty())
   {
     ROS_ERROR("PCEPlannerManager: No planning group specified");
@@ -123,8 +91,23 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
   if (config_it == config_.end())
   {
     ROS_ERROR("PCEPlannerManager: No configuration found for group '%s'", req.group_name.c_str());
+    
     error_code.val = moveit_msgs::MoveItErrorCodes::INVALID_GROUP_NAME;
     return planning_interface::PlanningContextPtr();
+  }
+
+
+  // Add this to see what's in the config
+  ROS_INFO("Found config for group '%s'", req.group_name.c_str());
+  const XmlRpc::XmlRpcValue& group_config = config_it->second;
+  ROS_INFO("Config type: %d", group_config.getType());
+  if (group_config.hasMember("pce_planner"))
+  {
+    ROS_INFO("Has pce_planner section");
+  }
+  else
+  {
+    ROS_WARN("No pce_planner section found!");
   }
 
   try

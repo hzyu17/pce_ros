@@ -47,12 +47,9 @@ void PCEPlanner::setup()
       config_
   ); 
 
-  ROS_INFO("PCEOptimizationTask created");
-
   // Pass visualizer to task
   if (visualizer_)
   {
-    ROS_INFO("Passing visualizer to PCEOptimizationTask");
     pce_task_->setVisualizer(visualizer_);
   }
   else
@@ -68,13 +65,91 @@ void PCEPlanner::setup()
   // Load PCE configuration from YAML
   // You'll need to convert XmlRpc to your PCEConfig format
   // For now, use defaults or parse manually
-  
-  pce_config_.num_samples = 3000;
-  pce_config_.num_iterations = 10;
-  pce_config_.temperature = 1.5f;
-  pce_config_.eta = 1.0f;
-  
-  // TODO: Parse config_ to populate pce_config_
+
+  if (config_.hasMember("pce_planner"))
+  {
+    XmlRpc::XmlRpcValue& pce_planner = config_["pce_planner"];
+
+    if (pce_planner.hasMember("num_iterations"))
+    {
+      int val = static_cast<int>(pce_planner["num_iterations"]);
+      ROS_INFO("  Reading num_iterations: %d", val);
+      pce_config_.num_iterations = val;
+    }
+    else
+    {
+      ROS_WARN("  num_iterations not found in pce_planner!");
+      pce_config_.num_iterations = 15;  
+    }
+    
+    if (pce_planner.hasMember("num_samples"))
+    {
+      pce_config_.num_samples = static_cast<int>(pce_planner["num_samples"]);
+    }
+    else
+    {
+      pce_config_.num_samples = 3000;  
+    }
+
+    if (pce_planner.hasMember("temperature"))
+    {
+      pce_config_.temperature = static_cast<double>(pce_planner["temperature"]);
+    }
+    else
+    {
+      pce_config_.temperature = 1.5f;  
+    }
+
+    if (pce_planner.hasMember("eta"))
+    {
+      pce_config_.eta = static_cast<double>(pce_planner["eta"]);
+    }
+    else
+    {
+      pce_config_.eta = 1.0f;  
+    }
+    
+    if (pce_planner.hasMember("num_discretization"))
+    {
+      pce_config_.num_discretization = static_cast<int>(pce_planner["num_discretization"]);
+    }
+    else
+    {
+      pce_config_.num_discretization = 20;  
+    }
+
+    if (pce_planner.hasMember("total_time"))
+    {
+      pce_config_.total_time = static_cast<double>(pce_planner["total_time"]);
+    }
+    else
+    {
+      pce_config_.total_time = 5.0f;  
+    }
+
+    if (pce_planner.hasMember("node_collision_radius"))
+    {
+      pce_config_.node_collision_radius = static_cast<double>(pce_planner["node_collision_radius"]);
+    }
+    else
+    {
+      pce_config_.node_collision_radius = 0.1f;  
+    }
+
+  }
+  else
+  {
+    ROS_ERROR("pce_planner section NOT found in config!");
+  }
+
+  ROS_INFO("PCE config:");
+  ROS_INFO("  num_discretization: %d", pce_config_.num_discretization);
+  ROS_INFO("  total_time: %.2f", pce_config_.total_time);
+  ROS_INFO("  num_samples: %d", pce_config_.num_samples);
+  ROS_INFO("  num_iterations: %d", pce_config_.num_iterations);
+  ROS_INFO("  eta: %.3f", pce_config_.eta);
+  ROS_INFO("  temperature: %.3f", pce_config_.temperature);
+  ROS_INFO("  node_collision_radius: %.3f", pce_config_.node_collision_radius);
   
   ROS_INFO("PCEPlanner setup complete for group '%s'", getGroupName().c_str());
 }
@@ -95,30 +170,9 @@ void PCEPlanner::setMotionPlanRequest(const planning_interface::MotionPlanReques
 
 void PCEPlanner::setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene)
 {
-  ROS_INFO("PCEPlanner::setPlanningScene called");
   
   // Store the planning scene
   planning_scene_ = scene;
-  
-  // DEBUG: What's in the scene?
-  if (scene)
-  {
-    const collision_detection::WorldConstPtr& world = scene->getWorld();
-    if (world)
-    {
-      std::vector<std::string> ids = world->getObjectIds();
-      ROS_INFO("  PCEPlanner received planning scene with %zu objects:", ids.size());
-      for (const auto& id : ids)
-      {
-        auto obj = world->getObject(id);
-        if (obj && !obj->shape_poses_.empty())
-        {
-          const Eigen::Vector3d& pos = obj->shape_poses_[0].translation();
-          ROS_INFO("    %s at [%.3f, %.3f, %.3f]", id.c_str(), pos.x(), pos.y(), pos.z());
-        }
-      }
-    }
-  }
   
   // Pass to optimization task if it exists
   if (pce_task_)
@@ -144,10 +198,6 @@ bool PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
     res.error_code_.val = moveit_msgs::MoveItErrorCodes::INVALID_ROBOT_STATE;
     return false;
   }
-
-  ROS_INFO("Got start and goal:");
-  ROS_INFO("  Start size: %d", (int)start.size());
-  ROS_INFO("  Goal size: %d", (int)goal.size());
   
   // Set planning request in task
   moveit_msgs::MoveItErrorCodes error_code;
@@ -162,15 +212,7 @@ bool PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   
   // Populate PCE config with start and goal
   pce_config_.num_dimensions = start.size();
-  pce_config_.num_discretization = 20;  // Or from YAML config
-  pce_config_.total_time = 5.0f;        // Or from request/config
-  pce_config_.node_collision_radius = 0.1f;
 
-  ROS_INFO("PCE config:");
-  ROS_INFO("  num_dimensions: %d", pce_config_.num_dimensions);
-  ROS_INFO("  num_discretization: %d", pce_config_.num_discretization);
-  ROS_INFO("  total_time: %.2f", pce_config_.total_time);
-  
   // Convert start/goal from Eigen::VectorXd to std::vector<float>
   pce_config_.start_position.resize(start.size());
   pce_config_.goal_position.resize(goal.size());
