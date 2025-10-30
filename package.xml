@@ -1,24 +1,48 @@
 <?xml version="1.0"?>
-<package format="2">
+<package format="3">
   <name>pce_ros</name>
   <version>0.1.0</version>
-  <description>PCE motion planner for MoveIt</description>
-  
+  <description>PCE motion planner plugin for MoveIt2</description>
+
   <maintainer email="you@example.com">Your Name</maintainer>
-  <license>Apache 2.0</license>
+  <license>Apache-2.0</license>
+
+  <!-- Build system -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Core dependencies -->
+  <depend>rclcpp</depend>
+  <depend>pluginlib</depend>
   
-  <buildtool_depend>catkin</buildtool_depend>
-  
+  <!-- MoveIt dependencies -->
   <depend>moveit_core</depend>
   <depend>moveit_ros_planning</depend>
-  <depend>pluginlib</depend>
-  <depend>roscpp</depend>
+  <depend>moveit_ros_planning_interface</depend>
+  <depend>moveit_msgs</depend>
+  
+  <!-- Geometry and collision -->
   <depend>geometric_shapes</depend>
   <depend>eigen_stl_containers</depend>
-  <depend>visualization_msgs</depend>
   
-  <!-- CRITICAL: Export the plugin -->
+  <!-- Transform library -->
+  <depend>tf2_ros</depend>
+  <depend>tf2_eigen_kdl</depend>
+  
+  <!-- Messages -->
+  <depend>visualization_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>trajectory_msgs</depend>
+  
+  <!-- Configuration -->
+  <depend>yaml-cpp</depend>
+  
+  <!-- Build dependencies -->
+  <build_depend>eigen3_cmake_module</build_depend>
+  
+  <!-- Export plugin -->
   <export>
+    <build_type>ament_cmake</build_type>
     <moveit_core plugin="${prefix}/pce_planner_plugin.xml"/>
   </export>
 </package>

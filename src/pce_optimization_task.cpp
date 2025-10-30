@@ -1,73 +1,55 @@
 #include "pce_optimization_task.h"
 #include <cmath>
-#include <tf2_eigen/tf2_eigen.h>
-#include <moveit_msgs/CollisionObject.h>
-
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <moveit_msgs/msg/collision_object.hpp>
 
 namespace pce_ros
 {
 
 PCEOptimizationTask::PCEOptimizationTask(
-    moveit::core::RobotModelConstPtr robot_model_ptr,
+    const moveit::core::RobotModelConstPtr& robot_model_ptr,
     const std::string& group_name,
-    const XmlRpc::XmlRpcValue& config)
+    const rclcpp::Node::SharedPtr& node)
   : robot_model_ptr_(robot_model_ptr)
   , group_name_(group_name)
+  , node_(node)
 {
 
-  ROS_ERROR("################################################");
-  ROS_ERROR("PCEOptimizationTask CONSTRUCTOR CALLED");
-  ROS_ERROR("  Group: %s", group_name.c_str());
-  ROS_ERROR("################################################");
+  RCLCPP_ERROR(node_->get_logger(), "################################################");
+  RCLCPP_ERROR(node_->get_logger(), "PCEOptimizationTask CONSTRUCTOR CALLED");
+  RCLCPP_ERROR(node_->get_logger(), "  Group: %s", group_name.c_str());
+  RCLCPP_ERROR(node_->get_logger(), "################################################");
 
   // TODO: Load cost function plugins from config (similar to STOMP)
   // For now, you can start with a simple built-in cost function
   
-  ROS_INFO("PCEOptimizationTask initialized for group '%s'", group_name_.c_str());
+  RCLCPP_INFO(node_->get_logger(), "PCEOptimizationTask initialized for group '%s'", group_name_.c_str());
 
   // Load parameters from config
   collision_clearance_ = 0.05;  // Load from config
   collision_threshold_ = 0.07;  // Load from config
 
   // Load collision parameters from config
-  if (config.hasMember("collision_clearance"))
-  {
-    collision_clearance_ = static_cast<double>(config["collision_clearance"]);
-  }
-  else
-  {
-    collision_clearance_ = 0.05;  // 5cm default
-  }
-  
-  if (config.hasMember("collision_threshold"))
-  {
-    collision_threshold_ = static_cast<double>(config["collision_threshold"]);
-  }
-  else
-  {
-    collision_threshold_ = 0.07;  // 7cm default
-  }
-  
-  ROS_INFO("PCEOptimizationTask initialized for group '%s'", group_name.c_str());
-  ROS_INFO("  Collision clearance: %.3f", collision_clearance_);
-  ROS_INFO("  Collision threshold: %.3f", collision_threshold_);
-  
-  ROS_INFO("PCEOptimizationTask initialized");
+  node_->declare_parameter<double>("collision_clearance", 0.05);
+  node_->declare_parameter<double>("collision_threshold", 0.07);
+  node_->get_parameter("collision_clearance", collision_clearance_);
+  node_->get_parameter("collision_threshold", collision_threshold_);
 
-}
+  RCLCPP_INFO(node_->get_logger(), "PCEOptimizationTask initialized for group '%s'", group_name_.c_str());
+  RCLCPP_INFO(node_->get_logger(), "  Collision clearance: %.3f", collision_clearance_);
+  RCLCPP_INFO(node_->get_logger(), "  Collision threshold: %.3f", collision_threshold_);
 
-PCEOptimizationTask::~PCEOptimizationTask()
-{
+  RCLCPP_INFO(node_->get_logger(), "PCEOptimizationTask initialized");
 }
 
 void PCEOptimizationTask::setPlanningScene(
     const planning_scene::PlanningSceneConstPtr& scene)
 {
-  ROS_INFO("=== Setting up planning scene (CHOMP approach) ===");
+  RCLCPP_INFO(node_->get_logger(), "=== Setting up planning scene (CHOMP approach) ===");
   
   if (!scene)
   {
-    ROS_ERROR("Planning scene is NULL!");
+    RCLCPP_ERROR(node_->get_logger(), "Planning scene is NULL!");
     return;
   }
 
@@ -77,7 +59,7 @@ void PCEOptimizationTask::setPlanningScene(
   // Create distance field using CHOMP's approach
   createDistanceFieldFromPlanningScene();
   
-  ROS_INFO("=== Planning scene setup complete ===");
+  RCLCPP_INFO(node_->get_logger(), "=== Planning scene setup complete ===");
 }
 
 
@@ -109,7 +91,7 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
 {
   if (!distance_field_ || !planning_scene_)
   {
-    ROS_ERROR("Distance field or planning scene is NULL!");
+    RCLCPP_ERROR(node_->get_logger(), "Distance field or planning scene is NULL!");
     return;
   }
   
@@ -117,12 +99,12 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
   
   if (!world)
   {
-    ROS_WARN("World is NULL!");
+    RCLCPP_WARN(node_->get_logger(), "World is NULL!");
     return;
   }
   
   std::vector<std::string> object_ids = world->getObjectIds();
-  ROS_INFO("Adding %zu collision objects to distance field:", object_ids.size());
+  RCLCPP_INFO(node_->get_logger(), "Adding %zu collision objects to distance field:", object_ids.size());
   
   int total_points = 0;
   
@@ -131,13 +113,13 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
     collision_detection::World::ObjectConstPtr obj = world->getObject(id);
     if (!obj)
     {
-      ROS_WARN("  Object '%s' is NULL!", id.c_str());
+      RCLCPP_WARN(node_->get_logger(), "  Object '%s' is NULL!", id.c_str());
       continue;
     }
         
     // Try to get object pose from collision object message
     // We need to query the planning scene for the collision object message
-    std::vector<moveit_msgs::CollisionObject> collision_objects;
+    std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
     planning_scene_->getCollisionObjectMsgs(collision_objects);
     
     Eigen::Isometry3d object_pose = Eigen::Isometry3d::Identity();
@@ -156,7 +138,7 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
     
     if (!found_object_pose)
     {
-      ROS_WARN("    Could not find collision object message for '%s', using identity", id.c_str());
+      RCLCPP_WARN(node_->get_logger(), "    Could not find collision object message for '%s', using identity", id.c_str());
     }
     
     // Process shapes
@@ -168,8 +150,8 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
       // COMPOSE: world_pose = object_pose * shape_pose_relative
       Eigen::Isometry3d shape_pose_world = object_pose * shape_pose_relative;
       
-      ROS_INFO("    Shape %zu world pose:", i);
-      ROS_INFO("      Position: [%.3f, %.3f, %.3f]",
+      RCLCPP_INFO(node_->get_logger(), "    Shape %zu world pose:", i);
+      RCLCPP_INFO(node_->get_logger(), "      Position: [%.3f, %.3f, %.3f]",
                shape_pose_world.translation().x(),
                shape_pose_world.translation().y(),
                shape_pose_world.translation().z());
@@ -181,12 +163,12 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
       {
         distance_field_->addPointsToField(points);
         total_points += points.size();
-        ROS_INFO("    Added %zu points", points.size());
+        RCLCPP_INFO(node_->get_logger(), "    Added %zu points", points.size());
       }
     }
   }
   
-  ROS_INFO("Distance field populated with %d total points", total_points);
+  RCLCPP_INFO(node_->get_logger(), "Distance field populated with %d total points", total_points);
   
 }
 
@@ -209,9 +191,9 @@ void PCEOptimizationTask::samplePointsFromShape(
     const shapes::Box* box = static_cast<const shapes::Box*>(shape.get());
     
     // Sample points throughout the box volume
-    int nx = std::max(5, (int)std::ceil(box->size[0] / resolution));
-    int ny = std::max(5, (int)std::ceil(box->size[1] / resolution));
-    int nz = std::max(5, (int)std::ceil(box->size[2] / resolution));
+    int nx = std::max(5, static_cast<int>(std::ceil(box->size[0] / resolution)));
+    int ny = std::max(5, static_cast<int>(std::ceil(box->size[1] / resolution)));
+    int nz = std::max(5, static_cast<int>(std::ceil(box->size[2] / resolution)));
     
     for (int ix = 0; ix < nx; ++ix)
     {
@@ -230,17 +212,17 @@ void PCEOptimizationTask::samplePointsFromShape(
       }
     }
     
-    ROS_INFO("    Box [%.2f x %.2f x %.2f] at [%.2f, %.2f, %.2f]: %d points",
+    RCLCPP_INFO(node_->get_logger(), "    Box [%.2f x %.2f x %.2f] at [%.2f, %.2f, %.2f]: %d points",
              box->size[0], box->size[1], box->size[2],
              pose.translation().x(), pose.translation().y(), pose.translation().z(),
-             (int)points.size());
+             static_cast<int>(points.size()));
   }
   else if (shape->type == shapes::SPHERE)
   {
     const shapes::Sphere* sphere = static_cast<const shapes::Sphere*>(shape.get());
     
     double radius = sphere->radius;
-    int n_phi = std::max(5, (int)std::ceil(radius / resolution));
+    int n_phi = std::max(5, static_cast<int>(std::ceil(radius / resolution)));
     int n_theta = n_phi * 2;
     
     for (int ip = 0; ip < n_phi; ++ip)
@@ -265,10 +247,10 @@ void PCEOptimizationTask::samplePointsFromShape(
       }
     }
     
-    ROS_INFO("    Sphere radius %.2f at [%.2f, %.2f, %.2f]: %d points",
+    RCLCPP_INFO(node_->get_logger(), "    Sphere radius %.2f at [%.2f, %.2f, %.2f]: %d points",
              radius,
              pose.translation().x(), pose.translation().y(), pose.translation().z(),
-             (int)points.size());
+             static_cast<int>(points.size()));
   }
   else if (shape->type == shapes::CYLINDER)
   {
@@ -276,11 +258,11 @@ void PCEOptimizationTask::samplePointsFromShape(
     
     double radius = cylinder->radius;
     double length = cylinder->length;
-    
-    int n_r = std::max(3, (int)std::ceil(radius / resolution));
-    int n_theta = std::max(8, (int)std::ceil(2.0 * M_PI * radius / resolution));
-    int n_z = std::max(3, (int)std::ceil(length / resolution));
-    
+
+    int n_r = std::max(3, static_cast<int>(std::ceil(radius / resolution)));
+    int n_theta = std::max(8, static_cast<int>(std::ceil(2.0 * M_PI * radius / resolution)));
+    int n_z = std::max(3, static_cast<int>(std::ceil(length / resolution)));
+
     for (int ir = 0; ir < n_r; ++ir)
     {
       double r = radius * ir / (n_r - 1);
@@ -300,14 +282,14 @@ void PCEOptimizationTask::samplePointsFromShape(
       }
     }
     
-    ROS_INFO("    Cylinder r=%.2f, h=%.2f at [%.2f, %.2f, %.2f]: %d points",
+    RCLCPP_INFO(node_->get_logger(), "    Cylinder r=%.2f, h=%.2f at [%.2f, %.2f, %.2f]: %d points",
              radius, length,
              pose.translation().x(), pose.translation().y(), pose.translation().z(),
-             (int)points.size());
+             static_cast<int>(points.size()));
   }
   else
   {
-    ROS_WARN("    Unsupported shape type: %d", (int)shape->type);
+    RCLCPP_WARN(node_->get_logger(), "    Unsupported shape type: %d", static_cast<int>(shape->type));
   }
 }
 
@@ -316,7 +298,7 @@ double PCEOptimizationTask::getDistanceAtPoint(const Eigen::Vector3d& point) con
 {
   if (!distance_field_)
   {
-    ROS_ERROR_THROTTLE(1.0, "Distance field is NULL!");
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000, "Distance field is NULL!");
     return 1000.0;  // Large distance
   }
   
@@ -349,8 +331,8 @@ float PCEOptimizationTask::getObstacleCost(double distance) const
 
 bool PCEOptimizationTask::setMotionPlanRequest(
     const planning_scene::PlanningSceneConstPtr& planning_scene,
-    const moveit_msgs::MotionPlanRequest& req,
-    moveit_msgs::MoveItErrorCodes& error_code)
+    const moveit_msgs::msg::MotionPlanRequest& req,
+    moveit_msgs::msg::MoveItErrorCodes& error_code)
 {
   planning_scene_ptr_ = planning_scene;
   plan_request_ = req;
@@ -371,13 +353,13 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
   
   if (!jmg)
   {
-    ROS_ERROR_ONCE("Joint model group '%s' not found!", group_name_.c_str());
+    RCLCPP_ERROR_ONCE(node_->get_logger(), "Joint model group '%s' not found!", group_name_.c_str());
     return sphere_locations;
   }
   
   const std::vector<const moveit::core::LinkModel*>& links = jmg->getLinkModels();
   
-  ROS_INFO_ONCE("Group '%s' has %zu links", group_name_.c_str(), links.size());
+  RCLCPP_INFO_ONCE(node_->get_logger(), "Group '%s' has %zu links", group_name_.c_str(), links.size());
   
   for (const auto* link : links)
   {
@@ -387,13 +369,13 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
     const std::vector<shapes::ShapeConstPtr>& shapes = link->getShapes();
     const EigenSTL::vector_Isometry3d& shape_poses = link->getCollisionOriginTransforms();
     
-    ROS_INFO_ONCE("  Link '%s' has %zu shapes", link->getName().c_str(), shapes.size());
+    RCLCPP_INFO_ONCE(node_->get_logger(), "  Link '%s' has %zu shapes", link->getName().c_str(), shapes.size());
     
     if (shapes.empty())
     {
       // No shapes - add link origin as fallback
       sphere_locations.push_back(link_transform.translation());
-      ROS_INFO_ONCE("    Added link origin as fallback");
+      RCLCPP_INFO_ONCE(node_->get_logger(), "    Added link origin as fallback");
       continue;
     }
     
@@ -402,7 +384,7 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
       const shapes::ShapeConstPtr& shape = shapes[s];
       Eigen::Isometry3d shape_transform = link_transform * shape_poses[s];
       
-      ROS_INFO_ONCE("    Shape %zu type: %d", s, (int)shape->type);
+      RCLCPP_INFO_ONCE(node_->get_logger(), "    Shape %zu type: %d", s, static_cast<int>(shape->type));
       
       // Sample points based on shape type
       if (shape->type == shapes::CYLINDER)
@@ -422,7 +404,7 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
           Eigen::Vector3d world_point = shape_transform * local_point;
           sphere_locations.push_back(world_point);
         }
-        ROS_INFO_ONCE("      Added %d cylinder samples", num_samples);
+        RCLCPP_INFO_ONCE(node_->get_logger(), "      Added %d cylinder samples", num_samples);
       }
       else if (shape->type == shapes::SPHERE)
       {
@@ -430,7 +412,7 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
             static_cast<const shapes::Sphere*>(shape.get());
         Eigen::Vector3d center = shape_transform.translation();
         sphere_locations.push_back(center);
-        ROS_INFO_ONCE("      Added sphere center");
+        RCLCPP_INFO_ONCE(node_->get_logger(), "      Added sphere center");
       }
       else if (shape->type == shapes::BOX)
       {
@@ -458,24 +440,24 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
           Eigen::Vector3d world_pt = shape_transform * local_pt;
           sphere_locations.push_back(world_pt);
         }
-        ROS_INFO_ONCE("      Added %zu box samples", local_points.size());
+        RCLCPP_INFO_ONCE(node_->get_logger(), "      Added %zu box samples", local_points.size());
       }
       else if (shape->type == shapes::MESH)
       {
         // Mesh - just add the mesh origin for now
         sphere_locations.push_back(shape_transform.translation());
-        ROS_INFO_ONCE("      Added mesh origin (type MESH)");
+        RCLCPP_INFO_ONCE(node_->get_logger(), "      Added mesh origin (type MESH)");
       }
       else
       {
         // Unknown shape - add origin
         sphere_locations.push_back(shape_transform.translation());
-        ROS_INFO_ONCE("      Added origin for unknown shape type %d", (int)shape->type);
+        RCLCPP_INFO_ONCE(node_->get_logger(), "      Added origin for unknown shape type %d", static_cast<int>(shape->type));
       }
     }
   }
   
-  ROS_INFO_ONCE("Generated %zu total sphere locations", sphere_locations.size());
+  RCLCPP_INFO_ONCE(node_->get_logger(), "Generated %zu total sphere locations", sphere_locations.size());
   
   return sphere_locations;
 }
@@ -485,7 +467,7 @@ float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajecto
 {
   if (!planning_scene_ptr_)
   {
-    ROS_ERROR("No planning scene set!");
+    RCLCPP_ERROR(node_->get_logger(), "No planning scene set!");
     return std::numeric_limits<float>::infinity();
   }
   
@@ -523,15 +505,15 @@ float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajecto
 
 float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) const
 {
-  ROS_INFO_ONCE("=== computeCollisionCost CALLED ===");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "=== computeCollisionCost CALLED ===");
   
   if (!distance_field_)
   {
-    ROS_WARN_THROTTLE(1.0, "Distance field not available in computeCollisionCost!");
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000, "Distance field not available in computeCollisionCost!");
     return 0.0f;
   }
   
-  ROS_INFO_ONCE("Distance field is available, computing collision cost...");
+  RCLCPP_INFO_ONCE(node_->get_logger(), "Distance field is available, computing collision cost...");
   
   float total_cost = 0.0f;
   int collision_count = 0;
@@ -550,10 +532,10 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
     
     if (i == 0)
     {
-      ROS_INFO_ONCE("Waypoint 0 has %zu sphere locations", sphere_locations.size());
+      RCLCPP_INFO_ONCE(node_->get_logger(), "Waypoint 0 has %zu sphere locations", sphere_locations.size());
       if (!sphere_locations.empty())
       {
-        ROS_INFO_ONCE("  First sphere at [%.3f, %.3f, %.3f]",
+        RCLCPP_INFO_ONCE(node_->get_logger(), "  First sphere at [%.3f, %.3f, %.3f]",
                      sphere_locations[0].x(),
                      sphere_locations[0].y(),
                      sphere_locations[0].z());
@@ -584,7 +566,7 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
     }
   }
   
-  ROS_INFO_ONCE("computeCollisionCost returning: %.4f", total_cost);
+  RCLCPP_INFO_ONCE(node_->get_logger(), "computeCollisionCost returning: %.4f", total_cost);
   
   return total_cost;
 }
@@ -609,7 +591,7 @@ bool PCEOptimizationTask::filterTrajectory(Trajectory& trajectory, int iteration
   if (trajectory.nodes.empty() || 
       joint_models.size() != static_cast<size_t>(trajectory.nodes[0].position.size()))
   {
-    ROS_ERROR("Trajectory dimensions don't match joint model group");
+    RCLCPP_ERROR(node_->get_logger(), "Trajectory dimensions don't match joint model group");
     return false;
   }
   
@@ -649,7 +631,7 @@ bool PCEOptimizationTask::filterTrajectory(Trajectory& trajectory, int iteration
   
   if (filtered)
   {
-    ROS_DEBUG("PCE: Joint limits applied at iteration %d", iteration_number);
+    RCLCPP_DEBUG(node_->get_logger(), "PCE: Joint limits applied at iteration %d", iteration_number);
   }
   
   return filtered;
@@ -659,16 +641,16 @@ bool PCEOptimizationTask::filterTrajectory(Trajectory& trajectory, int iteration
 void PCEOptimizationTask::postIteration(int iteration_number, float cost, 
                                         const Trajectory& trajectory)
 {
-  ROS_INFO("PCE Iteration %d: cost = %.4f", iteration_number, cost);  // This should print
+  RCLCPP_INFO(node_->get_logger(), "PCE Iteration %d: cost = %.4f", iteration_number, cost);  // This should print
   
   // Check if visualizer exists
   if (!visualizer_)
   {
-    ROS_ERROR("Visualizer is NULL!");
+    RCLCPP_ERROR(node_->get_logger(), "Visualizer is NULL!");
     return;
   }
   
-  ROS_INFO("Calling visualization...");
+  RCLCPP_INFO(node_->get_logger(), "Calling visualization...");
   
   // Visualize current trajectory
   if (visualizer_)
@@ -678,20 +660,19 @@ void PCEOptimizationTask::postIteration(int iteration_number, float cost,
   }
   else
   {
-    ROS_ERROR_THROTTLE(5.0, "Visualizer is NULL!");
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000, "Visualizer is NULL!");
   }
   
-  ROS_INFO("Visualization called successfully");
+  RCLCPP_INFO(node_->get_logger(), "Visualization called successfully");
   
-  ros::Duration(0.05).sleep();
-  ros::spinOnce();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
 }
 
 
 void PCEOptimizationTask::done(bool success, int total_iterations,
                                float final_cost, const Trajectory& trajectory)
 {
-  ROS_INFO("PCE optimization %s after %d iterations (cost: %.4f)",
+  RCLCPP_INFO(node_->get_logger(), "PCE optimization %s after %d iterations (cost: %.4f)",
            success ? "succeeded" : "failed", total_iterations, final_cost);
   
   if (success)
@@ -705,7 +686,7 @@ void PCEOptimizationTask::initialize(size_t num_dimensions, const PathNode& star
                                      const PathNode& goal, size_t num_nodes,
                                      float total_time)
 {
-  ROS_DEBUG("PCE task initialized: %zu dimensions, %zu nodes", 
+  RCLCPP_DEBUG(node_->get_logger(), "PCE task initialized: %zu dimensions, %zu nodes", 
             num_dimensions, num_nodes);
 }
 
@@ -716,7 +697,7 @@ bool PCEOptimizationTask::trajectoryToRobotState(
   const auto* joint_model_group = robot_model_ptr_->getJointModelGroup(group_name_);
   if (!joint_model_group)
   {
-    ROS_ERROR("Joint model group '%s' not found", group_name_.c_str());
+    RCLCPP_ERROR(node_->get_logger(), "Joint model group '%s' not found", group_name_.c_str());
     return false;
   }
   
@@ -726,7 +707,7 @@ bool PCEOptimizationTask::trajectoryToRobotState(
   
   if (variable_names.size() != static_cast<size_t>(positions_float.size()))
   {
-    ROS_ERROR("Dimension mismatch: trajectory has %d DOFs, group has %lu variables",
+    RCLCPP_ERROR(node_->get_logger(), "Dimension mismatch: trajectory has %zu DOFs, group has %lu variables",
               positions_float.size(), variable_names.size());
     return false;
   }

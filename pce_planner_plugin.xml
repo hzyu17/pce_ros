@@ -1,4 +1,4 @@
-<library path="lib/libpce_ros">
+<library path="libpce_ros">
   <class name="pce_ros/PCEPlannerManager" 
          type="pce_ros::PCEPlannerManager" 
          base_class_type="planning_interface::PlannerManager">

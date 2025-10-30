@@ -11,12 +11,12 @@
  */
 #pragma once
 
-#include <ros/ros.h>
-#include <visualization_msgs/MarkerArray.h>
-#include <std_msgs/ColorRGBA.h>
-#include <moveit/robot_model/robot_model.h>
-#include <moveit/planning_scene/planning_scene.h>
-#include <moveit/distance_field/propagation_distance_field.h>
+#include <rclcpp/rclcpp.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
+#include <moveit/robot_model/robot_model.hpp>
+#include <moveit/planning_scene/planning_scene.hpp>
+#include <moveit/distance_field/propagation_distance_field.hpp>
 #include <pce/Trajectory.h>
 #include <Eigen/Core>
 #include <vector>
@@ -59,8 +59,8 @@ public:
    * @param config Visualization configuration
    * @param nh ROS node handle
    */
-  explicit PCEVisualization(const VisualizationConfig& config = VisualizationConfig(),
-                            ros::NodeHandle nh = ros::NodeHandle());
+  explicit PCEVisualization(const VisualizationConfig& config,
+                            const rclcpp::Node::SharedPtr& node);
   
   /**
    * @brief Visualize collision checking spheres on robot body
@@ -116,12 +116,12 @@ public:
 
 private:
   VisualizationConfig config_;
-  ros::NodeHandle nh_;
-  
-  mutable ros::Publisher collision_marker_pub_;
-  mutable ros::Publisher trajectory_marker_pub_;
-  mutable ros::Publisher distance_field_pub_;
-  
+  rclcpp::Node::SharedPtr node_;
+
+  mutable rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr collision_marker_pub_;
+  mutable rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr trajectory_marker_pub_;
+  mutable rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr distance_field_pub_;
+
   /**
    * @brief Get sphere locations on robot body for collision checking
    * @param state Robot state
@@ -149,14 +149,14 @@ private:
    * @param distance Signed distance (negative = collision)
    * @return RGBA color
    */
-  std_msgs::ColorRGBA getColorFromDistance(double distance) const;
+  std_msgs::msg::ColorRGBA getColorFromDistance(double distance) const;
   
   /**
    * @brief Get gradient color for trajectory visualization
    * @param ratio Value from 0 to 1
    * @return RGBA color
    */
-  std_msgs::ColorRGBA getGradientColor(float ratio) const;
+  std_msgs::msg::ColorRGBA getGradientColor(float ratio) const;
 };
 
 } // namespace pce_ros

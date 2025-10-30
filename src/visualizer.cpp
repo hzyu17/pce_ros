@@ -4,50 +4,57 @@
 namespace pce_ros
 {
 
-PCEVisualization::PCEVisualization(const VisualizationConfig& config, ros::NodeHandle nh)
+PCEVisualization::PCEVisualization(const VisualizationConfig& config, const rclcpp::Node::SharedPtr& node)
   : config_(config)
-  , nh_(nh)
+  , node_(node)
 {
-  ROS_ERROR("========================================");
-  ROS_ERROR("PCEVisualization constructor START");
-  ROS_ERROR("  NodeHandle namespace: %s", nh_.getNamespace().c_str());
-  ROS_ERROR("  collision_spheres_topic: %s", config_.collision_spheres_topic.c_str());
-  ROS_ERROR("========================================");
+  RCLCPP_ERROR(node_->get_logger(), "========================================");
+  RCLCPP_ERROR(node_->get_logger(), "PCEVisualization constructor START");
+  RCLCPP_ERROR(node_->get_logger(), "  Node namespace: %s", node_->get_namespace());
+  RCLCPP_ERROR(node_->get_logger(), "  collision_spheres_topic: %s", config_.collision_spheres_topic.c_str());
+  RCLCPP_ERROR(node_->get_logger(), "========================================");
 
+  // Create QoS profile
+  rclcpp::QoS qos(10);
+  qos.transient_local();  // Latched equivalent in ROS2
+  
   // Create publishers
-  collision_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
-      config_.collision_spheres_topic, 10, true);
+  collision_marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
+      config_.collision_spheres_topic, qos);
 
-  ROS_ERROR("Collision marker publisher created!");
-  ROS_ERROR("  Topic name: %s", collision_marker_pub_.getTopic().c_str());
-  ROS_ERROR("  Is latched: %s", collision_marker_pub_.isLatched() ? "yes" : "no");
-  
-  trajectory_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
-      config_.trajectory_topic, 10, true);
+  RCLCPP_ERROR(node_->get_logger(), "Collision marker publisher created!");
+  RCLCPP_ERROR(node_->get_logger(), "  Topic name: %s", collision_marker_pub_->get_topic_name());
+  RCLCPP_ERROR(node_->get_logger(), "  Publisher created successfully");
 
-  ROS_ERROR("Trajectory marker publisher created!");
-  ROS_ERROR("  Topic name: %s", trajectory_marker_pub_.getTopic().c_str());
+  trajectory_marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
+      config_.trajectory_topic, qos);
+
+  RCLCPP_ERROR(node_->get_logger(), "Trajectory marker publisher created!");
+  RCLCPP_ERROR(node_->get_logger(), "  Topic name: %s", 
+               trajectory_marker_pub_->get_topic_name());
   
-  distance_field_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
+  distance_field_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
       config_.distance_field_topic, 10);
 
-  ROS_ERROR("Distance field publisher created!");
-  ROS_ERROR("  Topic name: %s", distance_field_pub_.getTopic().c_str());
+  RCLCPP_ERROR(node_->get_logger(), "Distance field publisher created!");
+  RCLCPP_ERROR(node_->get_logger(), "  Topic name: %s", 
+               distance_field_pub_->get_topic_name());
   
-  ROS_INFO("PCE Visualization publishers created:");
-  ROS_INFO("  - %s", config_.collision_spheres_topic.c_str());
-  ROS_INFO("  - %s", config_.trajectory_topic.c_str());
+  RCLCPP_INFO(node_->get_logger(), "PCE Visualization publishers created:");
+  RCLCPP_INFO(node_->get_logger(), "  - %s", config_.collision_spheres_topic.c_str());
+  RCLCPP_INFO(node_->get_logger(), "  - %s", config_.trajectory_topic.c_str());
+
   
   // Wait for publishers to be ready
-  ros::Duration(0.5).sleep();
+  rclcpp::sleep_for(std::chrono::milliseconds(500));
 
-  ROS_ERROR("========================================");
-  ROS_ERROR("PCEVisualization constructor END");
-  ROS_ERROR("========================================");
-  
-  ROS_INFO("PCE Visualization initialized (collision_spheres=%s, trajectory=%s)",
-           config_.enable_collision_spheres ? "enabled" : "disabled",
-           config_.enable_trajectory ? "enabled" : "disabled");
+  RCLCPP_ERROR(node_->get_logger(), "========================================");
+  RCLCPP_ERROR(node_->get_logger(), "PCEVisualization constructor END");
+  RCLCPP_ERROR(node_->get_logger(), "========================================");
+
+  RCLCPP_INFO(node_->get_logger(), "PCE Visualization initialized (collision_spheres=%s, trajectory=%s)",
+              config_.enable_collision_spheres ? "enabled" : "disabled",
+              config_.enable_trajectory ? "enabled" : "disabled");
 }
 
 std::vector<Eigen::Vector3d> PCEVisualization::getSphereLocations(
@@ -157,9 +164,9 @@ bool PCEVisualization::trajectoryToRobotState(
   return true;
 }
 
-std_msgs::ColorRGBA PCEVisualization::getColorFromDistance(double distance) const
+std_msgs::msg::ColorRGBA PCEVisualization::getColorFromDistance(double distance) const
 {
-  std_msgs::ColorRGBA color;
+  std_msgs::msg::ColorRGBA color;
   color.a = 0.8;
   
   if (distance < 0.0)
@@ -188,9 +195,9 @@ std_msgs::ColorRGBA PCEVisualization::getColorFromDistance(double distance) cons
   return color;
 }
 
-std_msgs::ColorRGBA PCEVisualization::getGradientColor(float ratio) const
+std_msgs::msg::ColorRGBA PCEVisualization::getGradientColor(float ratio) const
 {
-  std_msgs::ColorRGBA color;
+  std_msgs::msg::ColorRGBA color;
   color.r = 0.5 * ratio;
   color.g = 0.0;
   color.b = 1.0;
@@ -204,29 +211,25 @@ void PCEVisualization::visualizeCollisionSpheres(
     const std::string& group_name,
     const distance_field::DistanceFieldConstPtr& distance_field) const
 {
-
-  ROS_INFO("visualizeCollisionSpheres called");
-  ROS_INFO("  enabled: %s", config_.enable_collision_spheres ? "true" : "false");
-  ROS_INFO("  subscribers: %d", collision_marker_pub_.getNumSubscribers());
+  RCLCPP_INFO(node_->get_logger(), "visualizeCollisionSpheres called");
+  RCLCPP_INFO(node_->get_logger(), "  enabled: %s", 
+              config_.enable_collision_spheres ? "true" : "false");
+  RCLCPP_INFO(node_->get_logger(), "  subscribers: %zu", 
+              collision_marker_pub_->get_subscription_count());
   
   if (!config_.enable_collision_spheres)
   {
-    ROS_WARN("Collision spheres visualization is disabled in config");
+    RCLCPP_WARN(node_->get_logger(), "Collision spheres visualization is disabled in config");
     return;
   }
   
-  if (collision_marker_pub_.getNumSubscribers() == 0)
+  if (collision_marker_pub_->get_subscription_count() == 0)
   {
-    ROS_WARN("No subscribers to /pce/collision_spheres");
-    return;
-  }
-
-  if (!config_.enable_collision_spheres || collision_marker_pub_.getNumSubscribers() == 0)
-  {
+    RCLCPP_WARN(node_->get_logger(), "No subscribers to /pce/collision_spheres");
     return;
   }
   
-  visualization_msgs::MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
   int marker_id = 0;
   
   size_t step = std::max(1ul, trajectory.nodes.size() / config_.trajectory_decimation);
@@ -243,13 +246,13 @@ void PCEVisualization::visualizeCollisionSpheres(
     
     for (const Eigen::Vector3d& point : sphere_locations)
     {
-      visualization_msgs::Marker marker;
+      visualization_msgs::msg::Marker marker;
       marker.header.frame_id = robot_model->getRootLinkName();
-      marker.header.stamp = ros::Time::now();
+      marker.header.stamp = node_->now();
       marker.ns = "collision_spheres";
       marker.id = marker_id++;
-      marker.type = visualization_msgs::Marker::SPHERE;
-      marker.action = visualization_msgs::Marker::ADD;
+      marker.type = visualization_msgs::msg::Marker::SPHERE;
+      marker.action = visualization_msgs::msg::Marker::ADD;
       
       marker.pose.position.x = point.x();
       marker.pose.position.y = point.y();
@@ -273,17 +276,15 @@ void PCEVisualization::visualizeCollisionSpheres(
         marker.color.a = 0.5;
       }
       
-      marker.lifetime = ros::Duration(config_.marker_lifetime);
+      marker.lifetime = rclcpp::Duration::from_seconds(config_.marker_lifetime);
       marker_array.markers.push_back(marker);
     }
   }
   
-  ROS_INFO("Publishing %zu markers", marker_array.markers.size());
-  collision_marker_pub_.publish(marker_array);
-  ROS_INFO("Markers published");
-
+  RCLCPP_INFO(node_->get_logger(), "Publishing %zu markers", marker_array.markers.size());
+  collision_marker_pub_->publish(marker_array);
+  RCLCPP_INFO(node_->get_logger(), "Markers published");
 }
-
 
 void PCEVisualization::visualizeTrajectory(
     const Trajectory& trajectory,
@@ -291,7 +292,7 @@ void PCEVisualization::visualizeTrajectory(
     const std::string& group_name,
     int iteration) const
 {
-  if (!config_.enable_trajectory || trajectory_marker_pub_.getNumSubscribers() == 0)
+  if (!config_.enable_trajectory || trajectory_marker_pub_->get_subscription_count() == 0)
   {
     return;
   }
@@ -302,19 +303,19 @@ void PCEVisualization::visualizeTrajectory(
     return;
   }
   
-  visualization_msgs::MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
   
   // Line strip for trajectory
-  visualization_msgs::Marker line_marker;
+  visualization_msgs::msg::Marker line_marker;
   line_marker.header.frame_id = robot_model->getRootLinkName();
-  line_marker.header.stamp = ros::Time::now();
+  line_marker.header.stamp = node_->now();
   line_marker.ns = "trajectory_path";
   line_marker.id = 0;
-  line_marker.type = visualization_msgs::Marker::LINE_STRIP;
-  line_marker.action = visualization_msgs::Marker::ADD;
+  line_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+  line_marker.action = visualization_msgs::msg::Marker::ADD;
   line_marker.scale.x = config_.line_width;
   line_marker.color = getGradientColor(0.5f);
-  line_marker.lifetime = ros::Duration(config_.marker_lifetime);
+  line_marker.lifetime = rclcpp::Duration::from_seconds(config_.marker_lifetime);
   
   const std::string& ee_link = jmg->getLinkModelNames().back();
   
@@ -328,19 +329,19 @@ void PCEVisualization::visualizeTrajectory(
     
     const Eigen::Isometry3d& ee_pose = state.getGlobalLinkTransform(ee_link);
     
-    geometry_msgs::Point p;
+    geometry_msgs::msg::Point p;
     p.x = ee_pose.translation().x();
     p.y = ee_pose.translation().y();
     p.z = ee_pose.translation().z();
     line_marker.points.push_back(p);
     
     // Waypoint spheres
-    visualization_msgs::Marker waypoint_marker;
+    visualization_msgs::msg::Marker waypoint_marker;
     waypoint_marker.header = line_marker.header;
     waypoint_marker.ns = "trajectory_waypoints";
     waypoint_marker.id = i;
-    waypoint_marker.type = visualization_msgs::Marker::SPHERE;
-    waypoint_marker.action = visualization_msgs::Marker::ADD;
+    waypoint_marker.type = visualization_msgs::msg::Marker::SPHERE;
+    waypoint_marker.action = visualization_msgs::msg::Marker::ADD;
     waypoint_marker.pose.position = p;
     waypoint_marker.pose.orientation.w = 1.0;
     waypoint_marker.scale.x = config_.waypoint_size;
@@ -355,12 +356,12 @@ void PCEVisualization::visualizeTrajectory(
   marker_array.markers.push_back(line_marker);
   
   // Iteration text
-  visualization_msgs::Marker text_marker;
+  visualization_msgs::msg::Marker text_marker;
   text_marker.header = line_marker.header;
   text_marker.ns = "iteration_text";
   text_marker.id = 0;
-  text_marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
-  text_marker.action = visualization_msgs::Marker::ADD;
+  text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+  text_marker.action = visualization_msgs::msg::Marker::ADD;
   text_marker.pose.position.x = 0.5;
   text_marker.pose.position.y = 0.0;
   text_marker.pose.position.z = 0.8;
@@ -375,19 +376,19 @@ void PCEVisualization::visualizeTrajectory(
   
   marker_array.markers.push_back(text_marker);
   
-  trajectory_marker_pub_.publish(marker_array);
+  trajectory_marker_pub_->publish(marker_array);
 }
 
 void PCEVisualization::clearAllMarkers() const
 {
-  visualization_msgs::MarkerArray marker_array;
-  visualization_msgs::Marker delete_marker;
-  delete_marker.action = visualization_msgs::Marker::DELETEALL;
+  visualization_msgs::msg::MarkerArray marker_array;
+  visualization_msgs::msg::Marker delete_marker;
+  delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
   marker_array.markers.push_back(delete_marker);
   
-  collision_marker_pub_.publish(marker_array);
-  trajectory_marker_pub_.publish(marker_array);
-  distance_field_pub_.publish(marker_array);
+  collision_marker_pub_->publish(marker_array);
+  trajectory_marker_pub_->publish(marker_array);
+  distance_field_pub_->publish(marker_array);
 }
 
 } // namespace pce_ros

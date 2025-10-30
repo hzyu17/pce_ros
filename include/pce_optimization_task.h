@@ -4,21 +4,20 @@
  */
 #pragma once
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include <memory>
-#include <moveit_msgs/MotionPlanRequest.h>
-#include <moveit/robot_model/robot_model.h>
-#include <moveit/planning_scene/planning_scene.h>
+#include <moveit_msgs/msg/motion_plan_request.hpp>
+#include <moveit/robot_model/robot_model.hpp>
+#include <moveit/planning_scene/planning_scene.hpp>
 #include <pce/PCEMotionPlanner.h>
 #include <pce/Trajectory.h>
 #include <pce/task.h>
-#include <pluginlib/class_loader.h>
 #include <geometric_shapes/shapes.h>
 #include <geometric_shapes/shape_operations.h>
 #include <eigen_stl_containers/eigen_stl_containers.h>
-#include <visualization_msgs/MarkerArray.h>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include "visualizer.h"
-#include <moveit/collision_detection/collision_tools.h>
+#include <moveit/collision_detection/collision_tools.hpp>
 
 
 // Forward declarations for plugin types (you can adapt STOMP's or create your own)
@@ -28,12 +27,12 @@ namespace pce_ros
 // Plugin loaders (reuse STOMP's plugins or create PCE-specific ones)
 namespace cost_functions {
   class PCECostFunction;
-  typedef std::shared_ptr<PCECostFunction> PCECostFunctionPtr;
+  using PCECostFunctionPtr = std::shared_ptr<PCECostFunction>;
 }
 
 namespace filters {
   class PCEFilter;
-  typedef std::shared_ptr<PCEFilter> PCEFilterPtr;
+  using PCEFilterPtr = std::shared_ptr<PCEFilter>;
 }
 
 /**
@@ -56,17 +55,17 @@ public:
    * @param config Plugin configuration (YAML/XmlRpc)
    */
   PCEOptimizationTask(
-      moveit::core::RobotModelConstPtr robot_model_ptr,
+      const moveit::core::RobotModelConstPtr& robot_model_ptr,
       const std::string& group_name,
-      const XmlRpc::XmlRpcValue& config);
-  
-  virtual ~PCEOptimizationTask();
+      const rclcpp::Node::SharedPtr& node);
+
+  virtual ~PCEOptimizationTask() = default;
 
 
   void setVisualizer(std::shared_ptr<PCEVisualization> viz)
   {
     visualizer_ = viz;
-    ROS_INFO("PCEOptimizationTask: Visualizer set");
+    RCLCPP_INFO(node_->get_logger(), "PCEOptimizationTask: Visualizer set");
   }
 
   /**
@@ -78,8 +77,8 @@ public:
    */
   bool setMotionPlanRequest(
       const planning_scene::PlanningSceneConstPtr& planning_scene,
-      const moveit_msgs::MotionPlanRequest& req,
-      moveit_msgs::MoveItErrorCodes& error_code);
+      const moveit_msgs::msg::MotionPlanRequest& req,
+      moveit_msgs::msg::MoveItErrorCodes& error_code);
 
   // Implement pce::Task interface
   float computeCollisionCost(const Trajectory& trajectory) const override;
@@ -100,6 +99,8 @@ public:
   void setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene);
 
 protected:
+  rclcpp::Node::SharedPtr node_;
+
   // Robot environment
   std::string group_name_;
   moveit::core::RobotModelConstPtr robot_model_ptr_;
@@ -112,7 +113,7 @@ protected:
   std::shared_ptr<distance_field::PropagationDistanceField> distance_field_;
   
   // Motion plan request
-  moveit_msgs::MotionPlanRequest plan_request_;
+  moveit_msgs::msg::MotionPlanRequest plan_request_;
 
   std::shared_ptr<PCEVisualization> visualizer_;
 
