@@ -80,6 +80,17 @@ install(FILES pce_planner_plugin.xml
   DESTINATION share/${PROJECT_NAME}
 )
 
+# === IMPORTANT: Install config and launch directories ===
+install(
+  DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 # === Package ===
 ament_export_include_directories(include)
 ament_export_libraries(${PROJECT_NAME})

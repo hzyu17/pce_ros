@@ -34,9 +34,9 @@ public:
    * @param visualizer Optional visualizer for trajectory visualization
    */
   PCEPlanner(const std::string& group,
-             const std::map<std::string, std::string>& config,
-             const moveit::core::RobotModelConstPtr& model,
+             const PCEConfig& config,
              const rclcpp::Node::SharedPtr& node,
+             const moveit::core::RobotModelConstPtr& model,
              std::shared_ptr<PCEVisualization> visualizer = nullptr);
   
   virtual ~PCEPlanner();
@@ -111,9 +111,11 @@ protected:
   PCEOptimizationTaskPtr pce_task_;
 
   std::string group_name_;
+
+  // ROS2 node for logging
+  rclcpp::Node::SharedPtr node_;
   
   // Configuration from parameters
-  std::map<std::string, std::string> config_;
   PCEConfig pce_config_;
   
   // Robot model from MoveIt2
@@ -121,9 +123,6 @@ protected:
 
     // Planning scene for collision checking
   planning_scene::PlanningSceneConstPtr planning_scene_;
-  
-  // ROS2 node for logging
-  rclcpp::Node::SharedPtr node_;
 
   // Visualizer for trajectory display
   std::shared_ptr<PCEVisualization> visualizer_;

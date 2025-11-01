@@ -14,45 +14,51 @@ PCEPlannerManager::PCEPlannerManager()
 {
 }
 
+namespace {
+rclcpp::Logger getLogger()
+{
+    return moveit::getLogger("pce_planner_manager");
+}
+}
+
 bool PCEPlannerManager::initialize(const moveit::core::RobotModelConstPtr& model,
                                    const rclcpp::Node::SharedPtr& node,
                                    const std::string& ns)
 {
-  RCLCPP_INFO(node->get_logger(), "=== PCEPlannerManager::initialize ===");
-  RCLCPP_INFO(node->get_logger(), "  Namespace: '%s'", ns.c_str());
-  
   robot_model_ = model;
   ns_ = ns;
   node_ = node;
-  
+
+  RCLCPP_INFO(getLogger(), "=== PCEPlannerManager::initialize ===");
+  RCLCPP_INFO(getLogger(), "  Namespace: '%s'", ns_.c_str());
+
   std::vector<std::string> planning_groups;
 
   rcl_interfaces::msg::ParameterDescriptor descriptor;
   descriptor.description = "List of planning groups for PCE planner";
-  
-  node_->declare_parameter<std::vector<std::string>>("pce.planning_groups", std::vector<std::string>{}, descriptor);
-  node_->declare_parameter<std::vector<std::string>>("pce/planning_groups", std::vector<std::string>{}, descriptor);
 
-  bool got = node_->get_parameter("pce.planning_groups", planning_groups);
-  if (!got) {
-    got = node_->get_parameter("pce/planning_groups", planning_groups);
-  }
+  if (!node_->has_parameter("pce.planning_groups"))
+    node_->declare_parameter("pce.planning_groups", std::vector<std::string>{}, descriptor);
 
-  if (got)
+  if (node_->get_parameter("pce.planning_groups", planning_groups))
   {
-    RCLCPP_INFO(node_->get_logger(), "  ✓ Found planning_groups with %zu entries:", planning_groups.size());
+    RCLCPP_INFO(getLogger(), "  ✓ Found planning_groups with %zu entries:", planning_groups.size());
     for (const auto& group : planning_groups)
     {
-      RCLCPP_INFO(node_->get_logger(), "    - %s", group.c_str());
-      config_[group] = true;
+      RCLCPP_INFO(getLogger(), "    - %s", group.c_str());
     }
   }
   else
   {
-    RCLCPP_ERROR(node_->get_logger(), "  ✗ Could not find parameter 'pce.planning_groups' (or 'pce/planning_groups')");
+    RCLCPP_ERROR(getLogger(), "  ✗ Could not find parameter 'pce.planning_groups' (or 'pce/planning_groups')");
   }
 
-  RCLCPP_INFO(node_->get_logger(), "PCEPlannerManager: Initialized with %zu planning group configurations", config_.size());
+  if (!getConfigData(node_, config_, planning_groups, "pce"))
+  {
+    RCLCPP_ERROR(getLogger(), "PCEPlannerManager: Failed to load configuration data");
+    return false;
+  }
+  RCLCPP_INFO(getLogger(), "PCEPlannerManager: Initialized with %zu planning group configurations", config_.size());
 
   // Create persistent visualizer
   VisualizationConfig viz_config;
@@ -64,7 +70,7 @@ bool PCEPlannerManager::initialize(const moveit::core::RobotModelConstPtr& model
   
   visualizer_ = std::make_shared<PCEVisualization>(viz_config, node_);
 
-  RCLCPP_INFO(node_->get_logger(), "PCEPlannerManager: Created persistent visualizer");
+  RCLCPP_INFO(getLogger(), "PCEPlannerManager: Created persistent visualizer");
 
   return true;
 }
@@ -80,11 +86,11 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
     const moveit_msgs::msg::MotionPlanRequest& req,
     moveit_msgs::msg::MoveItErrorCodes& error_code) const
 {
-  RCLCPP_INFO(node_->get_logger(), "=== PCEPlannerManager::getPlanningContext ===");
+  RCLCPP_INFO(getLogger(), "=== PCEPlannerManager::getPlanningContext ===");
 
   if (req.group_name.empty())
   {
-    RCLCPP_ERROR(node_->get_logger(), "PCEPlannerManager: No planning group specified");
+    RCLCPP_ERROR(getLogger(), "PCEPlannerManager: No planning group specified");
     error_code.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_GROUP_NAME;
     return planning_interface::PlanningContextPtr();
   }
@@ -92,24 +98,20 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
   auto config_it = config_.find(req.group_name);
   if (config_it == config_.end())
   {
-    RCLCPP_ERROR(node_->get_logger(), "PCEPlannerManager: No configuration found for group '%s'", req.group_name.c_str());
+    RCLCPP_ERROR(getLogger(), "PCEPlannerManager: No configuration found for group '%s'", req.group_name.c_str());
     error_code.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_GROUP_NAME;
     return planning_interface::PlanningContextPtr();
   }
-
-
-  // Add this to see what's in the config
-  RCLCPP_INFO(node_->get_logger(), "Found config for group '%s'", req.group_name.c_str());
+  RCLCPP_INFO(getLogger(), "Found config for group '%s'", req.group_name.c_str());
 
   try
   {
-    std::map<std::string, std::string> planner_config;
     auto planner = std::make_shared<PCEPlanner>(
-      req.group_name, planner_config, robot_model_, node_, visualizer_);
+      req.group_name, config_it->second, node_, robot_model_, visualizer_);
 
     if (!planner->canServiceRequest(req))
     {
-      RCLCPP_ERROR(node_->get_logger(), "PCEPlannerManager: Cannot service request for group '%s'", req.group_name.c_str());
+      RCLCPP_ERROR(getLogger(), "PCEPlannerManager: Cannot service request for group '%s'", req.group_name.c_str());
       error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
       return planning_interface::PlanningContextPtr();
     }
@@ -122,7 +124,7 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
   }
   catch (const std::exception& e)
   {
-    RCLCPP_ERROR(node_->get_logger(), "PCEPlannerManager: Failed to create planner: %s", e.what());
+    RCLCPP_ERROR(getLogger(), "PCEPlannerManager: Failed to create planner: %s", e.what());
     error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
     return planning_interface::PlanningContextPtr();
   }

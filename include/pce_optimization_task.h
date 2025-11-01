@@ -57,6 +57,7 @@ public:
   PCEOptimizationTask(
       const moveit::core::RobotModelConstPtr& robot_model_ptr,
       const std::string& group_name,
+      const PCEConfig& config,
       const rclcpp::Node::SharedPtr& node);
 
   virtual ~PCEOptimizationTask() = default;

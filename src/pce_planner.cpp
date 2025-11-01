@@ -4,29 +4,36 @@
 namespace pce_ros
 {
 
+namespace {
+rclcpp::Logger getLogger()
+{
+    return moveit::getLogger("pce_planner");
+}
+}
+
 PCEPlanner::PCEPlanner(
     const std::string& group,
-    const std::map<std::string, std::string>& config,
-    const moveit::core::RobotModelConstPtr& model,
+    const PCEConfig& config,
     const rclcpp::Node::SharedPtr& node,
+    const moveit::core::RobotModelConstPtr& model,
     std::shared_ptr<PCEVisualization> visualizer)
   : planning_interface::PlanningContext("PCE", group)
   , robot_model_(model)
   , group_name_(group)
-  , config_(config)
-  , node_(node)
+  , pce_config_(config)
   , visualizer_(visualizer)
+  , node_(node)
 {
-  RCLCPP_INFO(node_->get_logger(), "=== PCEPlanner Constructor ===");
-  RCLCPP_INFO(node_->get_logger(), "  Planning group: '%s'", group.c_str());
+  RCLCPP_INFO(getLogger(), "=== PCEPlanner Constructor ===");
+  RCLCPP_INFO(getLogger(), "  Planning group: '%s'", group.c_str());
 
   if (visualizer_)
   {
-    RCLCPP_INFO(node_->get_logger(), "  Visualizer provided and initialized");
+    RCLCPP_INFO(getLogger(), "  Visualizer provided and initialized");
   }
   else
   {
-    RCLCPP_WARN(node_->get_logger(), "  No visualizer provided - visualization disabled");
+    RCLCPP_WARN(getLogger(), "  No visualizer provided - visualization disabled");
   }
 
   setup();
@@ -38,13 +45,14 @@ PCEPlanner::~PCEPlanner()
 
 void PCEPlanner::setup()
 { 
-  RCLCPP_INFO(node_->get_logger(), "=== PCEPlanner::setup() ===");
-  RCLCPP_INFO(node_->get_logger(), "  Initializing for planning group: '%s'", group_name_.c_str());
+  RCLCPP_INFO(getLogger(), "=== PCEPlanner::setup() ===");
+  RCLCPP_INFO(getLogger(), "  Initializing for planning group: '%s'", group_name_.c_str());
 
   // Create optimization task
   pce_task_ = std::make_shared<PCEOptimizationTask>(
       robot_model_, 
       group_name_,
+      pce_config_,
       node_
   ); 
 
@@ -52,77 +60,26 @@ void PCEPlanner::setup()
   if (visualizer_)
   {
     pce_task_->setVisualizer(visualizer_);
-    RCLCPP_INFO(node_->get_logger(), "  Visualizer connected to optimization task");
+    RCLCPP_INFO(getLogger(), "  Visualizer connected to optimization task");
   }
   else
   {
-    RCLCPP_WARN(node_->get_logger(), "  No visualizer available for PCEOptimizationTask");
+    RCLCPP_WARN(getLogger(), "  No visualizer available for PCEOptimizationTask");
   }
   
   // Create PCE planner
   pce_planner_ = std::make_shared<ProximalCrossEntropyMotionPlanner>(pce_task_);
 
-  RCLCPP_INFO(node_->get_logger(), "  PCEMotionPlanner created with task");
-
-  // Load PCE configuration from parameters
-  // Helper lambda to get parameter with default value
-  auto getParam = [this](const std::string& key, auto default_val) -> decltype(default_val) {
-    if (config_.find(key) != config_.end())
-    {
-      if constexpr (std::is_same_v<decltype(default_val), int>)
-      {
-        return std::stoi(config_.at(key));
-      }
-      else if constexpr (std::is_same_v<decltype(default_val), double> || 
-                         std::is_same_v<decltype(default_val), float>)
-      {
-        return std::stod(config_.at(key));
-      }
-      else
-      {
-        return config_.at(key);
-      }
-    }
-    return default_val;
-  };
-
-  // Load num_iterations with validation
-  pce_config_.num_iterations = getParam("num_iterations", 15);
-  RCLCPP_INFO(node_->get_logger(), "  num_iterations: %zu", pce_config_.num_iterations);
-  
-  // Load num_samples with validation
-  pce_config_.num_samples = getParam("num_samples", 3000);
-  RCLCPP_INFO(node_->get_logger(), "  num_samples: %zu", pce_config_.num_samples);
-
-  // Load temperature with validation
-  pce_config_.temperature = static_cast<float>(getParam("temperature", 1.5));
-  RCLCPP_INFO(node_->get_logger(), "  temperature: %.3f", pce_config_.temperature);
-
-  // Load eta (learning rate) with validation
-  pce_config_.eta = static_cast<float>(getParam("eta", 1.0));
-  RCLCPP_INFO(node_->get_logger(), "  eta: %.3f", pce_config_.eta);
-  
-  // Load num_discretization with validation
-  pce_config_.num_discretization = getParam("num_discretization", 20);
-  RCLCPP_INFO(node_->get_logger(), "  num_discretization: %zu", pce_config_.num_discretization);
-
-  // Load total_time with validation
-  pce_config_.total_time = static_cast<float>(getParam("total_time", 5.0));
-  RCLCPP_INFO(node_->get_logger(), "  total_time: %.2f", pce_config_.total_time);
-
-  // Load node_collision_radius with validation
-  pce_config_.node_collision_radius = static_cast<float>(getParam("node_collision_radius", 0.1));
-  RCLCPP_INFO(node_->get_logger(), "  node_collision_radius: %.3f", pce_config_.node_collision_radius);
-
-  RCLCPP_INFO(node_->get_logger(), "=== PCE Configuration Summary ===");
-  RCLCPP_INFO(node_->get_logger(), "  num_discretization:     %zu", pce_config_.num_discretization);
-  RCLCPP_INFO(node_->get_logger(), "  total_time:             %.2f s", pce_config_.total_time);
-  RCLCPP_INFO(node_->get_logger(), "  num_samples:            %zu", pce_config_.num_samples);
-  RCLCPP_INFO(node_->get_logger(), "  num_iterations:         %zu", pce_config_.num_iterations);
-  RCLCPP_INFO(node_->get_logger(), "  eta:                    %.3f", pce_config_.eta);
-  RCLCPP_INFO(node_->get_logger(), "  temperature:            %.3f", pce_config_.temperature);
-  RCLCPP_INFO(node_->get_logger(), "  node_collision_radius:  %.3f m", pce_config_.node_collision_radius);
-  RCLCPP_INFO(node_->get_logger(), "PCEPlanner setup complete for group '%s'", getGroupName().c_str());
+  RCLCPP_INFO(getLogger(), "  PCEMotionPlanner created with task");
+  RCLCPP_INFO(getLogger(), "=== PCE Configuration Summary ===");
+  RCLCPP_INFO(getLogger(), "  num_discretization:     %zu", pce_config_.num_discretization);
+  RCLCPP_INFO(getLogger(), "  total_time:             %.2f s", pce_config_.total_time);
+  RCLCPP_INFO(getLogger(), "  num_samples:            %zu", pce_config_.num_samples);
+  RCLCPP_INFO(getLogger(), "  num_iterations:         %zu", pce_config_.num_iterations);
+  RCLCPP_INFO(getLogger(), "  eta:                    %.3f", pce_config_.eta);
+  RCLCPP_INFO(getLogger(), "  temperature:            %.3f", pce_config_.temperature);
+  RCLCPP_INFO(getLogger(), "  node_collision_radius:  %.3f m", pce_config_.node_collision_radius);
+  RCLCPP_INFO(getLogger(), "PCEPlanner setup complete for group '%s'", getGroupName().c_str());
 }
 
 void PCEPlanner::setVisualizer(std::shared_ptr<PCEVisualization> viz)
@@ -132,7 +89,7 @@ void PCEPlanner::setVisualizer(std::shared_ptr<PCEVisualization> viz)
   if (pce_task_ && visualizer_)
   {
     pce_task_->setVisualizer(visualizer_);
-    RCLCPP_INFO(node_->get_logger(), "Visualizer set for PCEPlanner and task");
+    RCLCPP_INFO(getLogger(), "Visualizer set for PCEPlanner and task");
   }
 }
 
@@ -140,7 +97,7 @@ void PCEPlanner::setPlanningScene(const planning_scene::PlanningSceneConstPtr& s
 {
   if (!scene)
   {
-    RCLCPP_WARN(node_->get_logger(), "Attempted to set null planning scene");
+    RCLCPP_WARN(getLogger(), "Attempted to set null planning scene");
     return;
   }
   
@@ -153,19 +110,19 @@ void PCEPlanner::setPlanningScene(const planning_scene::PlanningSceneConstPtr& s
     pce_task_->setPlanningScene(scene);
   }
 
-  RCLCPP_INFO(node_->get_logger(), "PCEPlanner::setPlanningScene complete");
+  RCLCPP_INFO(getLogger(), "PCEPlanner::setPlanningScene complete");
 }
 
 void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
 {
-  RCLCPP_INFO(node_->get_logger(), "=== PCEPlanner::solve() CALLED ===");
+  RCLCPP_INFO(getLogger(), "=== PCEPlanner::solve() CALLED ===");
 
   auto start_time = node_->now();
   
   // Validate planning scene
   if (!planning_scene_)
   {
-    RCLCPP_ERROR(node_->get_logger(), "Planning scene not set");
+    RCLCPP_ERROR(getLogger(), "Planning scene not set");
     res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_ROBOT_STATE;
     return;
   }
@@ -174,7 +131,7 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   Eigen::VectorXd start, goal;
   if (!getStartAndGoal(start, goal))
   {
-    RCLCPP_ERROR(node_->get_logger(), "Failed to extract start and goal states");
+    RCLCPP_ERROR(getLogger(), "Failed to extract start and goal states");
     res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_ROBOT_STATE;
     return;
   }
@@ -196,19 +153,19 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   ss_start << "]";
   ss_goal << "]";
   
-  RCLCPP_INFO(node_->get_logger(), "Start state: %s", ss_start.str().c_str());
-  RCLCPP_INFO(node_->get_logger(), "Goal state:  %s", ss_goal.str().c_str());
+  RCLCPP_INFO(getLogger(), "Start state: %s", ss_start.str().c_str());
+  RCLCPP_INFO(getLogger(), "Goal state:  %s", ss_goal.str().c_str());
   
   // Set planning request in task
   moveit_msgs::msg::MoveItErrorCodes error_code;
   if (!pce_task_->setMotionPlanRequest(getPlanningScene(), request_, error_code))
   {
-    RCLCPP_ERROR(node_->get_logger(), "Failed to set motion plan request");
+    RCLCPP_ERROR(getLogger(), "Failed to set motion plan request");
     res.error_code = error_code;
     return;
   }
 
-  RCLCPP_INFO(node_->get_logger(), "Motion plan request set in task");
+  RCLCPP_INFO(getLogger(), "Motion plan request set in task");
   
   // Populate PCE config with start and goal
   pce_config_.num_dimensions = start.size();
@@ -223,46 +180,46 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
     pce_config_.goal_position[i] = static_cast<float>(goal[i]);
   }
   
-  RCLCPP_INFO(node_->get_logger(), "Initializing PCE planner with %zu dimensions...", 
+  RCLCPP_INFO(getLogger(), "Initializing PCE planner with %zu dimensions...", 
               pce_config_.num_dimensions);
   
   // Initialize planner (sets up start_node_, goal_node_, and trajectory)
   if (!pce_planner_->initialize(pce_config_))
   {
-    RCLCPP_ERROR(node_->get_logger(), "PCE planner initialization failed");
+    RCLCPP_ERROR(getLogger(), "PCE planner initialization failed");
     res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::FAILURE;
     return;
   }
   
-  RCLCPP_INFO(node_->get_logger(), "PCE planner initialized successfully");
+  RCLCPP_INFO(getLogger(), "PCE planner initialized successfully");
   
-  RCLCPP_INFO(node_->get_logger(), "Starting PCE optimization...");
+  RCLCPP_INFO(getLogger(), "Starting PCE optimization...");
   
   // Solve the planning problem
   if (!pce_planner_->solve())
   {
-    RCLCPP_ERROR(node_->get_logger(), "PCE optimization failed to find valid solution");
+    RCLCPP_ERROR(getLogger(), "PCE optimization failed to find valid solution");
     res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
     return;
   }
   
-  RCLCPP_INFO(node_->get_logger(), "PCE optimization completed successfully");
+  RCLCPP_INFO(getLogger(), "PCE optimization completed successfully");
 
   // Get the optimized trajectory
   const Trajectory& pce_traj = pce_planner_->getCurrentTrajectory();
   
-  RCLCPP_INFO(node_->get_logger(), "Retrieved trajectory with %zu waypoints", pce_traj.nodes.size());
+  RCLCPP_INFO(getLogger(), "Retrieved trajectory with %zu waypoints", pce_traj.nodes.size());
   
   // Convert PCE trajectory to MoveIt2 joint trajectory
   trajectory_msgs::msg::JointTrajectory joint_traj;
   if (!pceTrajectoryToJointTrajectory(pce_traj, joint_traj))
   {
-    RCLCPP_ERROR(node_->get_logger(), "Failed to convert PCE trajectory to joint trajectory");
+    RCLCPP_ERROR(getLogger(), "Failed to convert PCE trajectory to joint trajectory");
     res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::FAILURE;
     return;
   }
   
-  RCLCPP_INFO(node_->get_logger(), "Converted to JointTrajectory with %zu points", 
+  RCLCPP_INFO(getLogger(), "Converted to JointTrajectory with %zu points", 
               joint_traj.points.size());
   
   // Populate response
@@ -273,7 +230,7 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   res.planning_time = (end_time - start_time).seconds();
   res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::SUCCESS;
   
-  RCLCPP_INFO(node_->get_logger(), "PCE planning succeeded in %.3f seconds", res.planning_time);
+  RCLCPP_INFO(getLogger(), "PCE planning succeeded in %.3f seconds", res.planning_time);
   
   return;
 }
@@ -316,7 +273,7 @@ bool PCEPlanner::getStartAndGoal(Eigen::VectorXd& start, Eigen::VectorXd& goal)
   
   if (!jmg)
   {
-    RCLCPP_ERROR(node_->get_logger(), "Joint model group '%s' not found", getGroupName().c_str());
+    RCLCPP_ERROR(getLogger(), "Joint model group '%s' not found", getGroupName().c_str());
     return false;
   }
   
@@ -347,7 +304,7 @@ bool PCEPlanner::getStartAndGoal(Eigen::VectorXd& start, Eigen::VectorXd& goal)
     return true;
   }
   
-  RCLCPP_ERROR(node_->get_logger(), "No valid goal constraints found");
+  RCLCPP_ERROR(getLogger(), "No valid goal constraints found");
   return false;
 }
 
@@ -360,7 +317,7 @@ bool PCEPlanner::pceTrajectoryToJointTrajectory(
   
   if (!jmg)
   {
-    RCLCPP_ERROR(node_->get_logger(), "Joint model group not found");
+    RCLCPP_ERROR(getLogger(), "Joint model group not found");
     return false;
   }
   
