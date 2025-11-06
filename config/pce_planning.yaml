@@ -4,6 +4,22 @@ pce:
     - arm
     - panda_arm
   
+  # Visualization settings (global for all groups)
+  visualization:
+    enable_collision_spheres: true
+    enable_trajectory: true
+    enable_distance_field: false
+    
+    sphere_size: 0.04
+    waypoint_size: 0.02
+    line_width: 0.01
+    marker_lifetime: 0.5
+    trajectory_decimation: 10
+    
+    collision_spheres_topic: "/pce/collision_spheres"
+    trajectory_topic: "/pce/trajectory"
+    distance_field_topic: "/pce/distance_field"
+  
   panda_arm:
     pce_planner:
       num_samples: 3000
@@ -17,3 +33,7 @@ pce:
 
     collision_clearance: 0.15
     collision_threshold: 0.15
+    
+    # Optional: Per-group visualization override
+    # visualization:
+    #   collision_clearance: 0.15

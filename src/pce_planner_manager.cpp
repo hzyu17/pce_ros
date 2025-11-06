@@ -17,55 +17,33 @@ PCEPlannerManager::PCEPlannerManager()
 bool PCEPlannerManager::initialize(const moveit::core::RobotModelConstPtr& model,
                                    const std::string& ns)
 {
-  ROS_INFO("=== PCEPlannerManager::initialize ===");
-  ROS_INFO("  Namespace: '%s'", ns.c_str());
-  
   robot_model_ = model;
   ns_ = ns;
   
   ros::NodeHandle nh(ns);
-  ROS_INFO("  NodeHandle namespace: %s", nh.getNamespace().c_str());
   
-  std::string param_name = "pce";
-  ROS_INFO("  Looking for config at: %s/%s", nh.getNamespace().c_str(), param_name.c_str());
-  
-  std::vector<std::string> planning_groups;
-  if (nh.getParam("pce/planning_groups", planning_groups))
+  if (!PCEPlanner::getConfigData(nh, config_, "pce"))
   {
-    ROS_INFO("  ✓ Found planning_groups with %zu entries:", planning_groups.size());
-    for (const auto& group : planning_groups)
-    {
-      ROS_INFO("    - %s", group.c_str());
-    }
-  }
-  else
-  {
-    ROS_ERROR("  ✗ Could not find pce/planning_groups!");
-  }
-  
-  if (!PCEPlanner::getConfigData(nh, config_, param_name))
-  {
-    ROS_ERROR("PCEPlannerManager: Failed to load configuration");
+    ROS_ERROR("PCEPlannerManager: Failed to load configuration from parameter server");
     return false;
   }
   
-  ROS_INFO("PCEPlannerManager: Initialized with %zu planning group configurations", config_.size());
-  
   // Create persistent visualizer
   VisualizationConfig viz_config;
-  viz_config.enable_collision_spheres = true;
-  viz_config.enable_trajectory = true;
-  viz_config.collision_spheres_topic = "/pce/collision_spheres";
-  viz_config.trajectory_topic = "/pce/trajectory";
-  viz_config.distance_field_topic = "/pce/distance_field";
+  XmlRpc::XmlRpcValue pce_config;
+  if (nh.getParam("pce", pce_config) && pce_config.hasMember("visualization"))
+  {
+    viz_config = PCEVisualization::loadConfig(pce_config["visualization"]);
+  }
   
   ros::NodeHandle global_nh;
   visualizer_ = std::make_shared<PCEVisualization>(viz_config, global_nh);
   
-  ROS_INFO("PCEPlannerManager: Created persistent visualizer");
+  ROS_INFO("PCEPlannerManager initialized for %zu planning groups", config_.size());
   
   return true;
 }
+
 
 void PCEPlannerManager::getPlanningAlgorithms(std::vector<std::string>& algs) const
 {

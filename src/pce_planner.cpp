@@ -15,20 +15,9 @@ PCEPlanner::PCEPlanner(
   , group_name_(group)
   , visualizer_(visualizer)
 {
-  ROS_INFO("=== PCEPlanner constructor ===");
-  ROS_INFO("  Group name: '%s'", group.c_str());
-
-  if (visualizer_)
-  {
-    ROS_INFO("  Visualizer provided in constructor");
-  }
-  else
-  {
-    ROS_WARN("  No visualizer provided in constructor");
-  }
-
-  setup();
+  setup();  // All logging happens in setup()
 }
+
 
 PCEPlanner::~PCEPlanner()
 {
@@ -36,10 +25,6 @@ PCEPlanner::~PCEPlanner()
 
 void PCEPlanner::setup()
 { 
-
-  ROS_INFO("=== PCEPlanner::setup() ===");
-  ROS_INFO("  Group name: '%s'", group_name_.c_str());
-
   // Create optimization task
   pce_task_ = std::make_shared<PCEOptimizationTask>(
       robot_model_, 
@@ -52,34 +37,22 @@ void PCEPlanner::setup()
   {
     pce_task_->setVisualizer(visualizer_);
   }
-  else
-  {
-    ROS_WARN("No visualizer available for PCEOptimizationTask");
-  }
   
   // Create PCE planner
   pce_planner_ = std::make_shared<ProximalCrossEntropyMotionPlanner>(pce_task_);
-  
-  ROS_INFO("PCEMotionPlanner created with task");
 
-  // Load PCE configuration from YAML
-  // You'll need to convert XmlRpc to your PCEConfig format
-  // For now, use defaults or parse manually
-
+  // Load PCE configuration from YAML (with defaults)
   if (config_.hasMember("pce_planner"))
   {
     XmlRpc::XmlRpcValue& pce_planner = config_["pce_planner"];
 
     if (pce_planner.hasMember("num_iterations"))
     {
-      int val = static_cast<int>(pce_planner["num_iterations"]);
-      ROS_INFO("  Reading num_iterations: %d", val);
-      pce_config_.num_iterations = val;
+      pce_config_.num_iterations = static_cast<int>(pce_planner["num_iterations"]);
     }
     else
     {
-      ROS_WARN("  num_iterations not found in pce_planner!");
-      pce_config_.num_iterations = 15;  
+      pce_config_.num_iterations = 15;
     }
     
     if (pce_planner.hasMember("num_samples"))
@@ -88,7 +61,7 @@ void PCEPlanner::setup()
     }
     else
     {
-      pce_config_.num_samples = 3000;  
+      pce_config_.num_samples = 3000;
     }
 
     if (pce_planner.hasMember("temperature"))
@@ -97,7 +70,7 @@ void PCEPlanner::setup()
     }
     else
     {
-      pce_config_.temperature = 1.5f;  
+      pce_config_.temperature = 1.5f;
     }
 
     if (pce_planner.hasMember("eta"))
@@ -106,7 +79,7 @@ void PCEPlanner::setup()
     }
     else
     {
-      pce_config_.eta = 1.0f;  
+      pce_config_.eta = 1.0f;
     }
     
     if (pce_planner.hasMember("num_discretization"))
@@ -115,7 +88,7 @@ void PCEPlanner::setup()
     }
     else
     {
-      pce_config_.num_discretization = 20;  
+      pce_config_.num_discretization = 20;
     }
 
     if (pce_planner.hasMember("total_time"))
@@ -124,7 +97,7 @@ void PCEPlanner::setup()
     }
     else
     {
-      pce_config_.total_time = 5.0f;  
+      pce_config_.total_time = 5.0f;
     }
 
     if (pce_planner.hasMember("node_collision_radius"))
@@ -133,25 +106,48 @@ void PCEPlanner::setup()
     }
     else
     {
-      pce_config_.node_collision_radius = 0.1f;  
+      pce_config_.node_collision_radius = 0.1f;
     }
-
   }
   else
   {
-    ROS_ERROR("pce_planner section NOT found in config!");
+    ROS_WARN("No pce_planner section found in config, using all defaults");
+    pce_config_.num_iterations = 15;
+    pce_config_.num_samples = 3000;
+    pce_config_.temperature = 1.5f;
+    pce_config_.eta = 1.0f;
+    pce_config_.num_discretization = 20;
+    pce_config_.total_time = 5.0f;
+    pce_config_.node_collision_radius = 0.1f;
   }
 
-  ROS_INFO("PCE config:");
-  ROS_INFO("  num_discretization: %d", pce_config_.num_discretization);
-  ROS_INFO("  total_time: %.2f", pce_config_.total_time);
-  ROS_INFO("  num_samples: %d", pce_config_.num_samples);
-  ROS_INFO("  num_iterations: %d", pce_config_.num_iterations);
-  ROS_INFO("  eta: %.3f", pce_config_.eta);
-  ROS_INFO("  temperature: %.3f", pce_config_.temperature);
-  ROS_INFO("  node_collision_radius: %.3f", pce_config_.node_collision_radius);
-  
-  ROS_INFO("PCEPlanner setup complete for group '%s'", getGroupName().c_str());
+  // ====================================================================
+  // CONSOLIDATED CONFIGURATION SUMMARY - Print once, print everything
+  // ====================================================================
+  ROS_INFO("╔════════════════════════════════════════════════════════════╗");
+  ROS_INFO("║           PCE PLANNER CONFIGURATION                        ║");
+  ROS_INFO("╠════════════════════════════════════════════════════════════╣");
+  ROS_INFO("║ Planning Group: %-42s ║", group_name_.c_str());
+  ROS_INFO("║ Visualizer:     %-42s ║", visualizer_ ? "Enabled" : "Disabled");
+  ROS_INFO("╠════════════════════════════════════════════════════════════╣");
+  ROS_INFO("║ OPTIMIZATION PARAMETERS                                    ║");
+  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
+  ROS_INFO("║   Samples per iteration:  %-32d ║", pce_config_.num_samples);
+  ROS_INFO("║   Max iterations:         %-32d ║", pce_config_.num_iterations);
+  ROS_INFO("║   Temperature:            %-32.3f ║", pce_config_.temperature);
+  ROS_INFO("║   Elite ratio (eta):      %-32.3f ║", pce_config_.eta);
+  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
+  ROS_INFO("║ TRAJECTORY PARAMETERS                                      ║");
+  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
+  ROS_INFO("║   Waypoints:              %-32d ║", pce_config_.num_discretization);
+  ROS_INFO("║   Total time:             %-32.2f ║", pce_config_.total_time);
+  ROS_INFO("║   Node collision radius:  %-32.3f ║", pce_config_.node_collision_radius);
+  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
+  ROS_INFO("║ COLLISION PARAMETERS                                       ║");
+  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
+  ROS_INFO("║   Collision clearance:    %-32.3f ║", pce_task_->getCollisionClearance());
+  ROS_INFO("║   Collision threshold:    %-32.3f ║", pce_task_->getCollisionThreshold());
+  ROS_INFO("╚════════════════════════════════════════════════════════════╝");
 }
 
 

@@ -99,13 +99,17 @@ public:
   // Set planning scene and initialize distance field
   void setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene);
 
+
+  float getCollisionClearance() const { return collision_clearance_; }
+  float getCollisionThreshold() const { return collision_threshold_; }
+
 protected:
+  protected:
   // Robot environment
   std::string group_name_;
   moveit::core::RobotModelConstPtr robot_model_ptr_;
-  planning_scene::PlanningSceneConstPtr planning_scene_ptr_;
-
-  // Distance field collision environment (like CHOMP uses)
+  
+  // Planning scene (mutable copy for distance field operations)
   planning_scene::PlanningScenePtr planning_scene_;  
   
   // Direct access to distance field

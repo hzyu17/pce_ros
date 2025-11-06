@@ -4,51 +4,105 @@
 namespace pce_ros
 {
 
+VisualizationConfig PCEVisualization::loadConfig(const XmlRpc::XmlRpcValue& config_value)
+{
+  VisualizationConfig config;
+  
+  // Load enable flags
+  if (config_value.hasMember("enable_collision_spheres"))
+  {
+    config.enable_collision_spheres = static_cast<bool>(config_value["enable_collision_spheres"]);
+  }
+  
+  if (config_value.hasMember("enable_trajectory"))
+  {
+    config.enable_trajectory = static_cast<bool>(config_value["enable_trajectory"]);
+  }
+  
+  if (config_value.hasMember("enable_distance_field"))
+  {
+    config.enable_distance_field = static_cast<bool>(config_value["enable_distance_field"]);
+  }
+  
+  // Load visualization parameters
+  if (config_value.hasMember("sphere_size"))
+  {
+    config.sphere_size = static_cast<double>(config_value["sphere_size"]);
+  }
+  
+  if (config_value.hasMember("waypoint_size"))
+  {
+    config.waypoint_size = static_cast<double>(config_value["waypoint_size"]);
+  }
+  
+  if (config_value.hasMember("line_width"))
+  {
+    config.line_width = static_cast<double>(config_value["line_width"]);
+  }
+  
+  if (config_value.hasMember("marker_lifetime"))
+  {
+    config.marker_lifetime = static_cast<double>(config_value["marker_lifetime"]);
+  }
+  
+  if (config_value.hasMember("trajectory_decimation"))
+  {
+    config.trajectory_decimation = static_cast<int>(config_value["trajectory_decimation"]);
+  }
+  
+  if (config_value.hasMember("collision_clearance"))
+  {
+    config.collision_clearance = static_cast<double>(config_value["collision_clearance"]);
+  }
+  
+  // Load topic names
+  if (config_value.hasMember("collision_spheres_topic"))
+  {
+    config.collision_spheres_topic = static_cast<std::string>(config_value["collision_spheres_topic"]);
+  }
+  
+  if (config_value.hasMember("trajectory_topic"))
+  {
+    config.trajectory_topic = static_cast<std::string>(config_value["trajectory_topic"]);
+  }
+  
+  if (config_value.hasMember("distance_field_topic"))
+  {
+    config.distance_field_topic = static_cast<std::string>(config_value["distance_field_topic"]);
+  }
+  
+  ROS_INFO("Loaded visualization config:");
+  ROS_INFO("  enable_collision_spheres: %s", config.enable_collision_spheres ? "true" : "false");
+  ROS_INFO("  enable_trajectory: %s", config.enable_trajectory ? "true" : "false");
+  ROS_INFO("  sphere_size: %.3f", config.sphere_size);
+  ROS_INFO("  collision_spheres_topic: %s", config.collision_spheres_topic.c_str());
+  
+  return config;
+}
+
+
 PCEVisualization::PCEVisualization(const VisualizationConfig& config, ros::NodeHandle nh)
   : config_(config)
   , nh_(nh)
 {
-  ROS_ERROR("========================================");
-  ROS_ERROR("PCEVisualization constructor START");
-  ROS_ERROR("  NodeHandle namespace: %s", nh_.getNamespace().c_str());
-  ROS_ERROR("  collision_spheres_topic: %s", config_.collision_spheres_topic.c_str());
-  ROS_ERROR("========================================");
-
   // Create publishers
   collision_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
       config_.collision_spheres_topic, 10, true);
-
-  ROS_ERROR("Collision marker publisher created!");
-  ROS_ERROR("  Topic name: %s", collision_marker_pub_.getTopic().c_str());
-  ROS_ERROR("  Is latched: %s", collision_marker_pub_.isLatched() ? "yes" : "no");
   
   trajectory_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
       config_.trajectory_topic, 10, true);
 
-  ROS_ERROR("Trajectory marker publisher created!");
-  ROS_ERROR("  Topic name: %s", trajectory_marker_pub_.getTopic().c_str());
-  
   distance_field_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
       config_.distance_field_topic, 10);
-
-  ROS_ERROR("Distance field publisher created!");
-  ROS_ERROR("  Topic name: %s", distance_field_pub_.getTopic().c_str());
-  
-  ROS_INFO("PCE Visualization publishers created:");
-  ROS_INFO("  - %s", config_.collision_spheres_topic.c_str());
-  ROS_INFO("  - %s", config_.trajectory_topic.c_str());
   
   // Wait for publishers to be ready
   ros::Duration(0.5).sleep();
-
-  ROS_ERROR("========================================");
-  ROS_ERROR("PCEVisualization constructor END");
-  ROS_ERROR("========================================");
   
-  ROS_INFO("PCE Visualization initialized (collision_spheres=%s, trajectory=%s)",
-           config_.enable_collision_spheres ? "enabled" : "disabled",
-           config_.enable_trajectory ? "enabled" : "disabled");
+  ROS_INFO("PCE Visualization ready (spheres: %s, trajectory: %s)",
+           config_.enable_collision_spheres ? "ON" : "OFF",
+           config_.enable_trajectory ? "ON" : "OFF");
 }
+
 
 std::vector<Eigen::Vector3d> PCEVisualization::getSphereLocations(
     const moveit::core::RobotState& state,

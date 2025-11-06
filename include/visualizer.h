@@ -61,6 +61,13 @@ public:
    */
   explicit PCEVisualization(const VisualizationConfig& config = VisualizationConfig(),
                             ros::NodeHandle nh = ros::NodeHandle());
+
+  /**
+   * @brief Load visualization configuration from ROS parameters
+   * @param config_value XmlRpc value containing visualization config
+   * @return VisualizationConfig with loaded parameters
+   */
+  static VisualizationConfig loadConfig(const XmlRpc::XmlRpcValue& config_value);
   
   /**
    * @brief Visualize collision checking spheres on robot body

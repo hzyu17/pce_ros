@@ -14,21 +14,6 @@ PCEOptimizationTask::PCEOptimizationTask(
   : robot_model_ptr_(robot_model_ptr)
   , group_name_(group_name)
 {
-
-  ROS_ERROR("################################################");
-  ROS_ERROR("PCEOptimizationTask CONSTRUCTOR CALLED");
-  ROS_ERROR("  Group: %s", group_name.c_str());
-  ROS_ERROR("################################################");
-
-  // TODO: Load cost function plugins from config (similar to STOMP)
-  // For now, you can start with a simple built-in cost function
-  
-  ROS_INFO("PCEOptimizationTask initialized for group '%s'", group_name_.c_str());
-
-  // Load parameters from config
-  collision_clearance_ = 0.05;  // Load from config
-  collision_threshold_ = 0.07;  // Load from config
-
   // Load collision parameters from config
   if (config.hasMember("collision_clearance"))
   {
@@ -36,7 +21,7 @@ PCEOptimizationTask::PCEOptimizationTask(
   }
   else
   {
-    collision_clearance_ = 0.05;  // 5cm default
+    ROS_INFO("  Using default collision_clearance: %.3f", collision_clearance_);
   }
   
   if (config.hasMember("collision_threshold"))
@@ -45,15 +30,8 @@ PCEOptimizationTask::PCEOptimizationTask(
   }
   else
   {
-    collision_threshold_ = 0.07;  // 7cm default
+    ROS_INFO("  Using default collision_threshold: %.3f", collision_threshold_);
   }
-  
-  ROS_INFO("PCEOptimizationTask initialized for group '%s'", group_name.c_str());
-  ROS_INFO("  Collision clearance: %.3f", collision_clearance_);
-  ROS_INFO("  Collision threshold: %.3f", collision_threshold_);
-  
-  ROS_INFO("PCEOptimizationTask initialized");
-
 }
 
 PCEOptimizationTask::~PCEOptimizationTask()
@@ -63,8 +41,6 @@ PCEOptimizationTask::~PCEOptimizationTask()
 void PCEOptimizationTask::setPlanningScene(
     const planning_scene::PlanningSceneConstPtr& scene)
 {
-  ROS_INFO("=== Setting up planning scene (CHOMP approach) ===");
-  
   if (!scene)
   {
     ROS_ERROR("Planning scene is NULL!");
@@ -76,10 +52,7 @@ void PCEOptimizationTask::setPlanningScene(
   
   // Create distance field using CHOMP's approach
   createDistanceFieldFromPlanningScene();
-  
-  ROS_INFO("=== Planning scene setup complete ===");
 }
-
 
 void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
 {  
@@ -87,13 +60,12 @@ void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
   double size_x = 3.0;
   double size_y = 3.0;
   double size_z = 4.0;
-  double resolution = 0.02;  // 2cm resolution (CHOMP default)
+  double resolution = 0.02;
   double origin_x = -1.5;
   double origin_y = -1.5;
   double origin_z = -2.0;
-  double max_distance = 1.0;  // Max distance to compute (optimization)
+  double max_distance = 1.0;
   
-  // Create MoveIt's PropagationDistanceField (this is what CHOMP uses!)
   distance_field_ = std::make_shared<distance_field::PropagationDistanceField>(
       size_x, size_y, size_z,
       resolution,
@@ -101,9 +73,12 @@ void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
       max_distance
   );
     
-  // Add collision objects from planning scene
   addCollisionObjectsToDistanceField();
+  
+  ROS_INFO("Distance field created [%.1f x %.1f x %.1f, res=%.3f]", 
+           size_x, size_y, size_z, resolution);
 }
+
 
 void PCEOptimizationTask::addCollisionObjectsToDistanceField()
 {
@@ -352,7 +327,6 @@ bool PCEOptimizationTask::setMotionPlanRequest(
     const moveit_msgs::MotionPlanRequest& req,
     moveit_msgs::MoveItErrorCodes& error_code)
 {
-  planning_scene_ptr_ = planning_scene;
   plan_request_ = req;
   
   setPlanningScene(planning_scene);
@@ -483,7 +457,7 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
 
 float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajectory) const
 {
-  if (!planning_scene_ptr_)
+  if (!planning_scene_)  // NEW - using planning_scene_
   {
     ROS_ERROR("No planning scene set!");
     return std::numeric_limits<float>::infinity();
@@ -507,7 +481,7 @@ float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajecto
     
     // Check collision
     collision_result.clear();
-    planning_scene_ptr_->checkCollision(collision_request, collision_result, state);
+    planning_scene_->checkCollision(collision_request, collision_result, state);  // NEW
     
     if (collision_result.collision)
     {
