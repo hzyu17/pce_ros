@@ -29,10 +29,10 @@ pce:
       convergence_threshold: 0.0001
       num_discretization: 20
       total_time: 5.0
-      node_collision_radius: 0.20
 
     collision_clearance: 0.15
     collision_threshold: 0.15
+    sigma_obs: 1000.0
     
     # Optional: Per-group visualization override
     # visualization:

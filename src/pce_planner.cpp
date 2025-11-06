@@ -122,32 +122,33 @@ void PCEPlanner::setup()
   }
 
   // ====================================================================
-  // CONSOLIDATED CONFIGURATION SUMMARY - Print once, print everything
+  // CONSOLIDATED CONFIGURATION SUMMARY - ASCII version for compatibility
   // ====================================================================
-  ROS_INFO("╔════════════════════════════════════════════════════════════╗");
-  ROS_INFO("║           PCE PLANNER CONFIGURATION                        ║");
-  ROS_INFO("╠════════════════════════════════════════════════════════════╣");
-  ROS_INFO("║ Planning Group: %-42s ║", group_name_.c_str());
-  ROS_INFO("║ Visualizer:     %-42s ║", visualizer_ ? "Enabled" : "Disabled");
-  ROS_INFO("╠════════════════════════════════════════════════════════════╣");
-  ROS_INFO("║ OPTIMIZATION PARAMETERS                                    ║");
-  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
-  ROS_INFO("║   Samples per iteration:  %-32d ║", pce_config_.num_samples);
-  ROS_INFO("║   Max iterations:         %-32d ║", pce_config_.num_iterations);
-  ROS_INFO("║   Temperature:            %-32.3f ║", pce_config_.temperature);
-  ROS_INFO("║   Elite ratio (eta):      %-32.3f ║", pce_config_.eta);
-  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
-  ROS_INFO("║ TRAJECTORY PARAMETERS                                      ║");
-  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
-  ROS_INFO("║   Waypoints:              %-32d ║", pce_config_.num_discretization);
-  ROS_INFO("║   Total time:             %-32.2f ║", pce_config_.total_time);
-  ROS_INFO("║   Node collision radius:  %-32.3f ║", pce_config_.node_collision_radius);
-  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
-  ROS_INFO("║ COLLISION PARAMETERS                                       ║");
-  ROS_INFO("╟────────────────────────────────────────────────────────────╢");
-  ROS_INFO("║   Collision clearance:    %-32.3f ║", pce_task_->getCollisionClearance());
-  ROS_INFO("║   Collision threshold:    %-32.3f ║", pce_task_->getCollisionThreshold());
-  ROS_INFO("╚════════════════════════════════════════════════════════════╝");
+  ROS_INFO("+============================================================+");
+  ROS_INFO("|           PCE PLANNER CONFIGURATION                        |");
+  ROS_INFO("+============================================================+");
+  ROS_INFO("| Planning Group: %-42s |", group_name_.c_str());
+  ROS_INFO("| Visualizer:     %-42s |", visualizer_ ? "Enabled" : "Disabled");
+  ROS_INFO("+============================================================+");
+  ROS_INFO("| OPTIMIZATION PARAMETERS                                    |");
+  ROS_INFO("+------------------------------------------------------------+");
+  ROS_INFO("|   Samples per iteration:  %-32d |", pce_config_.num_samples);
+  ROS_INFO("|   Max iterations:         %-32d |", pce_config_.num_iterations);
+  ROS_INFO("|   Temperature:            %-32.3f |", pce_config_.temperature);
+  ROS_INFO("|   Elite ratio (eta):      %-32.3f |", pce_config_.eta);
+  ROS_INFO("+------------------------------------------------------------+");
+  ROS_INFO("| TRAJECTORY PARAMETERS                                      |");
+  ROS_INFO("+------------------------------------------------------------+");
+  ROS_INFO("|   Waypoints:              %-32d |", pce_config_.num_discretization);
+  ROS_INFO("|   Total time:             %-32.2f |", pce_config_.total_time);
+  ROS_INFO("|   Node collision radius:  %-32.3f |", pce_config_.node_collision_radius);
+  ROS_INFO("+------------------------------------------------------------+");
+  ROS_INFO("| COLLISION PARAMETERS                                       |");
+  ROS_INFO("+------------------------------------------------------------+");
+  ROS_INFO("|   Collision clearance:    %-32.3f |", pce_task_->getCollisionClearance());
+  ROS_INFO("|   Collision threshold:    %-32.3f |", pce_task_->getCollisionThreshold());
+  ROS_INFO("|   Sigma obs (weight):     %-32.3f |", pce_task_->getSigmaObs()); 
+  ROS_INFO("+============================================================+");
 }
 
 

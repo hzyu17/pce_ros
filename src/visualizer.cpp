@@ -24,11 +24,6 @@ VisualizationConfig PCEVisualization::loadConfig(const XmlRpc::XmlRpcValue& conf
     config.enable_distance_field = static_cast<bool>(config_value["enable_distance_field"]);
   }
   
-  // Load visualization parameters
-  if (config_value.hasMember("sphere_size"))
-  {
-    config.sphere_size = static_cast<double>(config_value["sphere_size"]);
-  }
   
   if (config_value.hasMember("waypoint_size"))
   {
@@ -74,7 +69,7 @@ VisualizationConfig PCEVisualization::loadConfig(const XmlRpc::XmlRpcValue& conf
   ROS_INFO("Loaded visualization config:");
   ROS_INFO("  enable_collision_spheres: %s", config.enable_collision_spheres ? "true" : "false");
   ROS_INFO("  enable_trajectory: %s", config.enable_trajectory ? "true" : "false");
-  ROS_INFO("  sphere_size: %.3f", config.sphere_size);
+  ROS_INFO("  collision_clearance (used for sphere size): %.3f", config.collision_clearance);
   ROS_INFO("  collision_spheres_topic: %s", config.collision_spheres_topic.c_str());
   
   return config;
@@ -310,9 +305,9 @@ void PCEVisualization::visualizeCollisionSpheres(
       marker.pose.position.z = point.z();
       marker.pose.orientation.w = 1.0;
       
-      marker.scale.x = config_.sphere_size;
-      marker.scale.y = config_.sphere_size;
-      marker.scale.z = config_.sphere_size;
+      marker.scale.x = config_.collision_clearance * 2.0;  // Diameter
+      marker.scale.y = config_.collision_clearance * 2.0;
+      marker.scale.z = config_.collision_clearance * 2.0;
       
       if (distance_field)
       {

@@ -5,6 +5,7 @@
 
 #include "pce_planner_manager.h"
 #include <pluginlib/class_list_macros.hpp>
+#include <cstdlib>
 
 namespace pce_ros
 {
@@ -44,7 +45,6 @@ bool PCEPlannerManager::initialize(const moveit::core::RobotModelConstPtr& model
   return true;
 }
 
-
 void PCEPlannerManager::getPlanningAlgorithms(std::vector<std::string>& algs) const
 {
   algs.clear();
@@ -65,27 +65,45 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
     return planning_interface::PlanningContextPtr();
   }
 
-  auto config_it = config_.find(req.group_name);
-  if (config_it == config_.end())
+  // Reload YAML file into parameter server
+  ros::NodeHandle nh(ns_);
+  std::string yaml_file;
+  if (nh.getParam("pce_config_file", yaml_file))
   {
-    ROS_ERROR("PCEPlannerManager: No configuration found for group '%s'", req.group_name.c_str());
-    
-    error_code.val = moveit_msgs::MoveItErrorCodes::INVALID_GROUP_NAME;
-    return planning_interface::PlanningContextPtr();
-  }
-
-
-  // Add this to see what's in the config
-  ROS_INFO("Found config for group '%s'", req.group_name.c_str());
-  const XmlRpc::XmlRpcValue& group_config = config_it->second;
-  ROS_INFO("Config type: %d", group_config.getType());
-  if (group_config.hasMember("pce_planner"))
-  {
-    ROS_INFO("Has pce_planner section");
+    ROS_INFO("Reloading YAML: %s -> %s", yaml_file.c_str(), ns_.c_str());
+    std::string cmd = "rosparam load " + yaml_file + " " + ns_;
+    int result = system(cmd.c_str());
+    if (result == 0)
+    {
+      ROS_INFO("YAML reloaded successfully");
+      // Give ROS a moment to update
+      ros::Duration(0.1).sleep();
+    }
+    else
+    {
+      ROS_WARN("Failed to reload YAML (exit code: %d)", result);
+    }
   }
   else
   {
-    ROS_WARN("No pce_planner section found!");
+    ROS_WARN("No pce_config_file parameter set, using cached config");
+  }
+
+  // Read fresh config from parameter server
+  std::map<std::string, XmlRpc::XmlRpcValue> fresh_config;
+  if (!PCEPlanner::getConfigData(nh, fresh_config, "pce"))
+  {
+    ROS_ERROR("Failed to read configuration from parameter server");
+    error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
+    return planning_interface::PlanningContextPtr();
+  }
+
+  auto config_it = fresh_config.find(req.group_name);
+  if (config_it == fresh_config.end())
+  {
+    ROS_ERROR("No configuration for group '%s'", req.group_name.c_str());
+    error_code.val = moveit_msgs::MoveItErrorCodes::INVALID_GROUP_NAME;
+    return planning_interface::PlanningContextPtr();
   }
 
   try
@@ -99,7 +117,7 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
 
     if (!planner->canServiceRequest(req))
     {
-      ROS_ERROR("PCEPlannerManager: Cannot service request for group '%s'", req.group_name.c_str());
+      ROS_ERROR("Cannot service request for group '%s'", req.group_name.c_str());
       error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
       return planning_interface::PlanningContextPtr();
     }
@@ -112,12 +130,11 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
   }
   catch (const std::exception& e)
   {
-    ROS_ERROR("PCEPlannerManager: Failed to create planner: %s", e.what());
+    ROS_ERROR("Failed to create planner: %s", e.what());
     error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
     return planning_interface::PlanningContextPtr();
   }
 }
-
 
 bool PCEPlannerManager::canServiceRequest(const moveit_msgs::MotionPlanRequest& req) const
 {

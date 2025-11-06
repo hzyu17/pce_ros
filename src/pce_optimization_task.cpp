@@ -32,6 +32,16 @@ PCEOptimizationTask::PCEOptimizationTask(
   {
     ROS_INFO("  Using default collision_threshold: %.3f", collision_threshold_);
   }
+
+  if (config.hasMember("sigma_obs"))
+  {
+    sigma_obs_ = static_cast<double>(config["sigma_obs"]);
+  }
+  else
+  {
+    ROS_INFO("  Using default sigma_obs: %.3f", sigma_obs_);
+  }
+
 }
 
 PCEOptimizationTask::~PCEOptimizationTask()
@@ -507,7 +517,7 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
   
   ROS_INFO_ONCE("Distance field is available, computing collision cost...");
   
-  float total_cost = 0.0f;
+  float sum_squared_costs = 0.0f;
   int collision_count = 0;
   int near_collision_count = 0;
   
@@ -554,11 +564,15 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
         }
       }
       
-      total_cost += point_cost;
+      sum_squared_costs += point_cost * point_cost;
     }
   }
+
+  float total_cost = sum_squared_costs * sigma_obs_;
   
-  ROS_INFO_ONCE("computeCollisionCost returning: %.4f", total_cost);
+  ROS_INFO_ONCE("computeCollisionCost returning: %.4f (sum_squared: %.4f, sigma_obs: %.3f)", 
+                total_cost, sum_squared_costs, sigma_obs_);
+
   
   return total_cost;
 }

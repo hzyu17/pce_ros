@@ -102,6 +102,7 @@ public:
 
   float getCollisionClearance() const { return collision_clearance_; }
   float getCollisionThreshold() const { return collision_threshold_; }
+  float getSigmaObs() const { return sigma_obs_; }
 
 protected:
   protected:
@@ -122,6 +123,7 @@ protected:
 
   float collision_clearance_ = 0.05f;  // Safety margin (epsilon)
   float collision_threshold_ = 0.07f;   // Max distance to consider
+  float sigma_obs_ = 1.0f;
   
   // Plugin management
   std::vector<cost_functions::PCECostFunctionPtr> cost_functions_;
