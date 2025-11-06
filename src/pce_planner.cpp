@@ -1,5 +1,5 @@
 #include "pce_planner.h"
-#include <moveit/robot_state/conversions.h>
+#include <moveit/robot_state/conversions.hpp>
 
 namespace pce_ros
 {
@@ -221,10 +221,21 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   
   RCLCPP_INFO(getLogger(), "Converted to JointTrajectory with %zu points", 
               joint_traj.points.size());
-  
-  // Populate response
-  res.trajectory = std::make_shared<robot_trajectory::RobotTrajectory>(robot_model_, getGroupName());
-  res.trajectory->setRobotTrajectoryMsg(getPlanningScene()->getCurrentState(), joint_traj);
+
+  try
+  {
+    moveit::core::RobotState start_state_copy(robot_model_);
+    moveit::core::robotStateMsgToRobotState(request_.start_state, start_state_copy);
+    res.trajectory->setRobotTrajectoryMsg(start_state_copy, joint_traj);
+    
+    RCLCPP_INFO(getLogger(), "Trajectory message set successfully");
+  }
+  catch (const std::exception& e)
+  {
+    RCLCPP_ERROR(getLogger(), "Exception while setting trajectory: %s", e.what());
+    res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::FAILURE;
+    return;
+  }
   
   auto end_time = node_->now();
   res.planning_time = (end_time - start_time).seconds();
@@ -239,7 +250,7 @@ void PCEPlanner::solve(planning_interface::MotionPlanDetailedResponse& res)
 {
   planning_interface::MotionPlanResponse simple_res;
   solve(simple_res);
-  if (simple_res.error_code.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
+  if (simple_res.error_code.val == moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
   {
     res.trajectory.push_back(simple_res.trajectory);
     res.processing_time.push_back(simple_res.planning_time);

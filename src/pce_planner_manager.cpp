@@ -37,10 +37,13 @@ bool PCEPlannerManager::initialize(const moveit::core::RobotModelConstPtr& model
   rcl_interfaces::msg::ParameterDescriptor descriptor;
   descriptor.description = "List of planning groups for PCE planner";
 
-  if (!node_->has_parameter("pce.planning_groups"))
-    node_->declare_parameter("pce.planning_groups", std::vector<std::string>{}, descriptor);
+  if (!node_->has_parameter(ns_ + ".pce.planning_groups"))
+  {
+    RCLCPP_WARN(getLogger(), "Parameter 'pce.planning_groups' not found, declaring with default value.");
+    node_->declare_parameter(ns_ + ".pce.planning_groups", std::vector<std::string>{}, descriptor);
+  }
 
-  if (node_->get_parameter("pce.planning_groups", planning_groups))
+  if (node_->get_parameter(ns_ + ".pce.planning_groups", planning_groups))
   {
     RCLCPP_INFO(getLogger(), "  ✓ Found planning_groups with %zu entries:", planning_groups.size());
     for (const auto& group : planning_groups)

@@ -29,6 +29,7 @@ public:
   
   bool canServiceRequest(const planning_interface::MotionPlanRequest& req) const override;
 
+  // TODO: Use setPlannerConfigurations to load configs from MoveIt
 protected:
   std::string ns_;
   moveit::core::RobotModelConstPtr robot_model_;
@@ -63,9 +64,10 @@ bool getConfigData(const rclcpp::Node::SharedPtr& node,
   for (const auto& group : planning_groups)
   {
     PCEConfig group_config;
-    std::string base = param + "." + group;
+    std::string base = param + ".pce." + group;
     std::string group_param = base + ".pce_planner";
 
+    // TODO: Try get_parameter_or function
     group_config.num_iterations = getParam<int>(node, group_param + ".num_iterations", 15);
     group_config.num_samples = getParam<int>(node, group_param + ".num_samples", 3000);
     group_config.temperature = getParam<double>(node, group_param + ".temperature", 1.5);
