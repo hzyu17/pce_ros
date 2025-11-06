@@ -1,6 +1,7 @@
 #include "pce_planner.h"
 #include <moveit/robot_state/conversions.h>
 
+
 namespace pce_ros
 {
 
@@ -21,6 +22,9 @@ PCEPlanner::PCEPlanner(
 
 PCEPlanner::~PCEPlanner()
 {
+  pce_planner_.reset();
+  pce_task_.reset();
+  visualizer_.reset();
 }
 
 void PCEPlanner::setup()
@@ -148,6 +152,7 @@ void PCEPlanner::setup()
   ROS_INFO("|   Collision clearance:    %-32.3f |", pce_task_->getCollisionClearance());
   ROS_INFO("|   Collision threshold:    %-32.3f |", pce_task_->getCollisionThreshold());
   ROS_INFO("|   Sigma obs (weight):     %-32.3f |", pce_task_->getSigmaObs()); 
+  ROS_INFO("|   Sphere overlap ratio:   %-32.3f |", pce_task_->getSphereOverlapRatio());
   ROS_INFO("+============================================================+");
 }
 
@@ -229,6 +234,70 @@ bool PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
     return false;
   }
   ROS_INFO("PCE planner initialized successfully");
+
+
+  ROS_INFO("========================================================");
+  ROS_INFO("COLLISION SPHERE PREVIEW");
+  ROS_INFO("========================================================");
+  ROS_INFO("Visualizing collision checking spheres for initial trajectory...");
+  
+  // Get the initial trajectory
+  const Trajectory& initial_traj = pce_planner_->getCurrentTrajectory();
+  
+  // Compute collision cost (which caches sphere locations)
+  float initial_cost = pce_task_->computeCollisionCost(initial_traj);
+  ROS_INFO("Initial trajectory collision cost: %.4f", initial_cost);
+  
+  // Visualize the collision spheres
+  if (visualizer_)
+  {
+    visualizer_->visualizeCollisionSpheres(
+        initial_traj,
+        pce_task_->getCachedSphereLocations(),
+        robot_model_,
+        group_name_,
+        pce_task_->getCollisionClearance(),
+        nullptr
+    );
+    
+    visualizer_->visualizeTrajectory(
+        initial_traj,
+        robot_model_,
+        group_name_,
+        0
+    );
+  }
+  
+  ROS_INFO("--------------------------------------------------------");
+  ROS_INFO("Check RViz to see the collision checking spheres.");
+  ROS_INFO("Total spheres per waypoint: %zu", 
+           pce_task_->getCachedSphereLocations().empty() ? 0 : 
+           pce_task_->getCachedSphereLocations()[0].size());
+  ROS_INFO("Total waypoints: %zu", initial_traj.nodes.size());
+  ROS_INFO("--------------------------------------------------------");
+  ROS_WARN("Starting optimization in 5 seconds...");
+  
+  // Keep visualizing for 5 seconds
+  ros::Rate rate(2);  // 2 Hz
+  for (int i = 0; i < 10; ++i)
+  {
+    if (visualizer_)
+    {
+      visualizer_->visualizeCollisionSpheres(
+          initial_traj,
+          pce_task_->getCachedSphereLocations(),
+          robot_model_,
+          group_name_,
+          pce_task_->getCollisionClearance(),
+          nullptr
+      );
+    }
+    ros::spinOnce();
+    rate.sleep();
+  }
+  
+  ROS_INFO("Starting optimization...");
+  ROS_INFO("========================================================\n");
   
   ROS_INFO("Calling pce_planner_->solve()...");
   // Now solve (no parameters needed - everything was set in initialize)

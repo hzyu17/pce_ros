@@ -37,6 +37,13 @@ PCEOptimizationTask::PCEOptimizationTask(
   {
     sigma_obs_ = static_cast<double>(config["sigma_obs"]);
   }
+  if (config.hasMember("sphere_overlap_ratio"))
+  {
+    sphere_overlap_ratio_ = static_cast<double>(config["sphere_overlap_ratio"]);
+    // Clamp to valid range [0, 1]
+    if (sphere_overlap_ratio_ < 0.0f) sphere_overlap_ratio_ = 0.0f;
+    if (sphere_overlap_ratio_ > 1.0f) sphere_overlap_ratio_ = 1.0f;
+  }
   else
   {
     ROS_INFO("  Using default sigma_obs: %.3f", sigma_obs_);
@@ -446,11 +453,61 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
       }
       else if (shape->type == shapes::MESH)
       {
-        // Mesh - just add the mesh origin for now
-        sphere_locations.push_back(shape_transform.translation());
-        ROS_INFO_ONCE("      Added mesh origin (type MESH)");
-      }
-      else
+        const shapes::Mesh* mesh = static_cast<const shapes::Mesh*>(shape.get());
+        
+        // Get mesh bounding box
+        double x_min = 1e9, x_max = -1e9;
+        double y_min = 1e9, y_max = -1e9;
+        double z_min = 1e9, z_max = -1e9;
+        
+        for (unsigned int i = 0; i < mesh->vertex_count; ++i)
+        {
+          x_min = std::min(x_min, (double)mesh->vertices[3*i + 0]);
+          x_max = std::max(x_max, (double)mesh->vertices[3*i + 0]);
+          y_min = std::min(y_min, (double)mesh->vertices[3*i + 1]);
+          y_max = std::max(y_max, (double)mesh->vertices[3*i + 1]);
+          z_min = std::min(z_min, (double)mesh->vertices[3*i + 2]);
+          z_max = std::max(z_max, (double)mesh->vertices[3*i + 2]);
+        }
+        
+        double size_x = x_max - x_min;
+        double size_y = y_max - y_min;
+        double size_z = z_max - z_min;
+        
+        // Sampling parameters
+        double sphere_radius = collision_clearance_;
+        double overlap_ratio = sphere_overlap_ratio_;
+        double sphere_spacing = 2.0 * sphere_radius * (1.0 - overlap_ratio);
+        
+        // Calculate samples needed based on bounding box
+        int nx = std::max(2, static_cast<int>(std::ceil(size_x / sphere_spacing)) + 1);
+        int ny = std::max(2, static_cast<int>(std::ceil(size_y / sphere_spacing)) + 1);
+        int nz = std::max(2, static_cast<int>(std::ceil(size_z / sphere_spacing)) + 1);
+        
+        ROS_INFO_ONCE("      Mesh bounds: [%.3f,%.3f] x [%.3f,%.3f] x [%.3f,%.3f]",
+                    x_min, x_max, y_min, y_max, z_min, z_max);
+        ROS_INFO_ONCE("      Mesh size: %.3f x %.3f x %.3f, needs %dx%dx%d grid (spacing: %.3fm)",
+                    size_x, size_y, size_z, nx, ny, nz, sphere_spacing);
+        
+        // Sample on grid through bounding box
+        for (int ix = 0; ix < nx; ++ix)
+        {
+          for (int iy = 0; iy < ny; ++iy)
+          {
+            for (int iz = 0; iz < nz; ++iz)
+            {
+              double x = (nx == 1) ? (x_min + x_max)/2 : x_min + (size_x * ix) / (nx - 1);
+              double y = (ny == 1) ? (y_min + y_max)/2 : y_min + (size_y * iy) / (ny - 1);
+              double z = (nz == 1) ? (z_min + z_max)/2 : z_min + (size_z * iz) / (nz - 1);
+              
+              Eigen::Vector3d local_pt(x, y, z);
+              sphere_locations.push_back(shape_transform * local_pt);
+            }
+          }
+        }
+        
+        ROS_INFO_ONCE("      Added %d mesh samples (%dx%dx%d)", nx*ny*nz, nx, ny, nz);
+      }else
       {
         // Unknown shape - add origin
         sphere_locations.push_back(shape_transform.translation());
@@ -520,6 +577,10 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
   float sum_squared_costs = 0.0f;
   int collision_count = 0;
   int near_collision_count = 0;
+
+
+  cached_sphere_locations_.clear();
+  cached_sphere_locations_.resize(trajectory.nodes.size());
   
   for (size_t i = 0; i < trajectory.nodes.size(); ++i)
   {
@@ -531,6 +592,7 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
     
     // Get sphere locations on robot
     std::vector<Eigen::Vector3d> sphere_locations = getSphereLocations(state);
+    cached_sphere_locations_[i] = sphere_locations;
     
     if (i == 0)
     {
@@ -661,7 +723,7 @@ void PCEOptimizationTask::postIteration(int iteration_number, float cost,
   // Visualize current trajectory
   if (visualizer_)
   {
-    visualizer_->visualizeCollisionSpheres(trajectory, robot_model_ptr_, group_name_, distance_field_);
+    visualizer_->visualizeCollisionSpheres(trajectory, cached_sphere_locations_, robot_model_ptr_, group_name_, collision_clearance_, distance_field_);
     visualizer_->visualizeTrajectory(trajectory, robot_model_ptr_, group_name_, iteration_number);
   }
   else
@@ -684,7 +746,7 @@ void PCEOptimizationTask::done(bool success, int total_iterations,
   
   if (success)
   {
-    visualizer_->visualizeCollisionSpheres(trajectory, robot_model_ptr_, group_name_, distance_field_);
+    visualizer_->visualizeCollisionSpheres(trajectory, cached_sphere_locations_, robot_model_ptr_, group_name_, collision_clearance_, distance_field_);
     visualizer_->visualizeTrajectory(trajectory, robot_model_ptr_, group_name_, total_iterations);
   }
 }

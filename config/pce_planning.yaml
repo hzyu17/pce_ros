@@ -10,10 +10,9 @@ pce:
     enable_trajectory: true
     enable_distance_field: false
     
-    sphere_size: 0.04
     waypoint_size: 0.02
     line_width: 0.01
-    marker_lifetime: 0.5
+    marker_lifetime: 300.0
     trajectory_decimation: 10
     
     collision_spheres_topic: "/pce/collision_spheres"
@@ -30,10 +29,7 @@ pce:
       num_discretization: 20
       total_time: 5.0
 
-    collision_clearance: 0.15
-    collision_threshold: 0.15
-    sigma_obs: 1000.0
-    
-    # Optional: Per-group visualization override
-    # visualization:
-    #   collision_clearance: 0.15
+    collision_clearance: 0.05
+    collision_threshold: 0.05
+    sigma_obs: 100.0
+    sphere_overlap_ratio: 0.1      # Overlap between adjacent spheres (0.0-1.0)

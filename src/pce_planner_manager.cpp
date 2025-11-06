@@ -65,6 +65,7 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
     return planning_interface::PlanningContextPtr();
   }
 
+
   // Reload YAML file into parameter server
   ros::NodeHandle nh(ns_);
   std::string yaml_file;
@@ -88,6 +89,7 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
   {
     ROS_WARN("No pce_config_file parameter set, using cached config");
   }
+
 
   // Read fresh config from parameter server
   std::map<std::string, XmlRpc::XmlRpcValue> fresh_config;

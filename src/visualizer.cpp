@@ -23,21 +23,30 @@ VisualizationConfig PCEVisualization::loadConfig(const XmlRpc::XmlRpcValue& conf
   {
     config.enable_distance_field = static_cast<bool>(config_value["enable_distance_field"]);
   }
-  
+
+  // Load numeric parameters - handle both int and double
+    auto loadDouble = [](const XmlRpc::XmlRpcValue& val) -> double {
+      if (val.getType() == XmlRpc::XmlRpcValue::TypeDouble)
+        return static_cast<double>(val);
+      else if (val.getType() == XmlRpc::XmlRpcValue::TypeInt)
+        return static_cast<double>(static_cast<int>(val));
+      else
+        throw std::runtime_error("Invalid numeric type");
+    };
   
   if (config_value.hasMember("waypoint_size"))
   {
-    config.waypoint_size = static_cast<double>(config_value["waypoint_size"]);
+    config.waypoint_size = loadDouble(config_value["waypoint_size"]);
   }
   
   if (config_value.hasMember("line_width"))
   {
-    config.line_width = static_cast<double>(config_value["line_width"]);
+    config.line_width = loadDouble(config_value["line_width"]);
   }
   
   if (config_value.hasMember("marker_lifetime"))
   {
-    config.marker_lifetime = static_cast<double>(config_value["marker_lifetime"]);
+    config.marker_lifetime = loadDouble(config_value["marker_lifetime"]);
   }
   
   if (config_value.hasMember("trajectory_decimation"))
@@ -47,7 +56,7 @@ VisualizationConfig PCEVisualization::loadConfig(const XmlRpc::XmlRpcValue& conf
   
   if (config_value.hasMember("collision_clearance"))
   {
-    config.collision_clearance = static_cast<double>(config_value["collision_clearance"]);
+    config.collision_clearance = loadDouble(config_value["collision_clearance"]);
   }
   
   // Load topic names
@@ -206,32 +215,27 @@ bool PCEVisualization::trajectoryToRobotState(
   return true;
 }
 
-std_msgs::ColorRGBA PCEVisualization::getColorFromDistance(double distance) const
+std_msgs::ColorRGBA PCEVisualization::getColorFromDistance(
+    double distance, 
+    double collision_clearance) const  // ← ADD PARAMETER
 {
   std_msgs::ColorRGBA color;
   color.a = 0.8;
   
   if (distance < 0.0)
   {
-    // Red - collision
-    color.r = 1.0;
-    color.g = 0.0;
-    color.b = 0.0;
+    color.r = 1.0; color.g = 0.0; color.b = 0.0;  // Red - collision
   }
-  else if (distance < config_.collision_clearance)
+  else if (distance < collision_clearance)
   {
-    // Yellow to green gradient
-    float ratio = distance / config_.collision_clearance;
+    float ratio = distance / collision_clearance;
     color.r = 1.0 - ratio;
     color.g = 1.0;
-    color.b = 0.0;
+    color.b = 0.0;  // Yellow to green gradient
   }
   else
   {
-    // Green - safe
-    color.r = 0.0;
-    color.g = 1.0;
-    color.b = 0.0;
+    color.r = 0.0; color.g = 1.0; color.b = 0.0;  // Green - safe
   }
   
   return color;
@@ -249,27 +253,12 @@ std_msgs::ColorRGBA PCEVisualization::getGradientColor(float ratio) const
 
 void PCEVisualization::visualizeCollisionSpheres(
     const Trajectory& trajectory,
+    const std::vector<std::vector<Eigen::Vector3d>>& sphere_locations_per_waypoint,
     const moveit::core::RobotModelConstPtr& robot_model,
     const std::string& group_name,
+    double collision_clearance,
     const distance_field::DistanceFieldConstPtr& distance_field) const
 {
-
-  ROS_INFO("visualizeCollisionSpheres called");
-  ROS_INFO("  enabled: %s", config_.enable_collision_spheres ? "true" : "false");
-  ROS_INFO("  subscribers: %d", collision_marker_pub_.getNumSubscribers());
-  
-  if (!config_.enable_collision_spheres)
-  {
-    ROS_WARN("Collision spheres visualization is disabled in config");
-    return;
-  }
-  
-  if (collision_marker_pub_.getNumSubscribers() == 0)
-  {
-    ROS_WARN("No subscribers to /pce/collision_spheres");
-    return;
-  }
-
   if (!config_.enable_collision_spheres || collision_marker_pub_.getNumSubscribers() == 0)
   {
     return;
@@ -282,13 +271,11 @@ void PCEVisualization::visualizeCollisionSpheres(
   
   for (size_t i = 0; i < trajectory.nodes.size(); i += step)
   {
-    moveit::core::RobotState state(robot_model);
-    if (!trajectoryToRobotState(trajectory, i, state, robot_model, group_name))
-    {
+    // Use pre-computed sphere locations
+    if (i >= sphere_locations_per_waypoint.size())
       continue;
-    }
-    
-    std::vector<Eigen::Vector3d> sphere_locations = getSphereLocations(state, robot_model, group_name);
+      
+    const std::vector<Eigen::Vector3d>& sphere_locations = sphere_locations_per_waypoint[i];
     
     for (const Eigen::Vector3d& point : sphere_locations)
     {
@@ -305,14 +292,14 @@ void PCEVisualization::visualizeCollisionSpheres(
       marker.pose.position.z = point.z();
       marker.pose.orientation.w = 1.0;
       
-      marker.scale.x = config_.collision_clearance * 2.0;  // Diameter
-      marker.scale.y = config_.collision_clearance * 2.0;
-      marker.scale.z = config_.collision_clearance * 2.0;
+      marker.scale.x = collision_clearance * 2.0;  // Diameter
+      marker.scale.y = collision_clearance * 2.0;
+      marker.scale.z = collision_clearance * 2.0;
       
       if (distance_field)
       {
         double distance = distance_field->getDistance(point.x(), point.y(), point.z());
-        marker.color = getColorFromDistance(distance);
+        marker.color = getColorFromDistance(distance, collision_clearance);
       }
       else
       {
@@ -327,10 +314,7 @@ void PCEVisualization::visualizeCollisionSpheres(
     }
   }
   
-  ROS_INFO("Publishing %zu markers", marker_array.markers.size());
   collision_marker_pub_.publish(marker_array);
-  ROS_INFO("Markers published");
-
 }
 
 
