@@ -160,12 +160,6 @@ void PCEPlanner::setup()
 void PCEPlanner::setMotionPlanRequest(const planning_interface::MotionPlanRequest& req)
 {
   request_ = req;
-  
-  // Important: Pass planning scene to task BEFORE solving
-  if (pce_task_ && planning_scene_)
-  {
-    pce_task_->setPlanningScene(planning_scene_);
-  }
 }
 
 
@@ -209,8 +203,6 @@ bool PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
     res.error_code_ = error_code;
     return false;
   }
-
-  ROS_INFO("Motion plan request set in task");
   
   // Populate PCE config with start and goal
   pce_config_.num_dimensions = start.size();
@@ -224,17 +216,28 @@ bool PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
     pce_config_.start_position[i] = static_cast<float>(start[i]);
     pce_config_.goal_position[i] = static_cast<float>(goal[i]);
   }
-  
-  ROS_INFO("Calling pce_planner_->initialize()...");
-  // Initialize planner (this sets up start_node_, goal_node_, and trajectory)
-  if (!pce_planner_->initialize(pce_config_))
+    
+  try
   {
-    ROS_ERROR("Failed to initialize PCE planner");
+    if (!pce_planner_->initialize(pce_config_))
+    {
+      ROS_ERROR("Failed to initialize PCE planner");
+      res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
+      return false;
+    }
+  }
+  catch (const std::exception& e)
+  {
+    ROS_ERROR("Exception in pce_planner_->initialize: %s", e.what());
     res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
     return false;
   }
-  ROS_INFO("PCE planner initialized successfully");
-
+  catch (...)
+  {
+    ROS_ERROR("Unknown exception in pce_planner_->initialize");
+    res.error_code_.val = moveit_msgs::MoveItErrorCodes::FAILURE;
+    return false;
+  }
 
   ROS_INFO("========================================================");
   ROS_INFO("COLLISION SPHERE PREVIEW");
@@ -368,41 +371,72 @@ bool PCEPlanner::canServiceRequest(const moveit_msgs::MotionPlanRequest& req) co
   return req.group_name == getGroupName();
 }
 
+
 bool PCEPlanner::getStartAndGoal(Eigen::VectorXd& start, Eigen::VectorXd& goal)
 {
+  std::string group = getGroupName();
+
+  if (!robot_model_)
+  {
+    ROS_ERROR("DEBUG: robot_model_ is NULL!");
+    return false;
+  }
+
   const moveit::core::JointModelGroup* jmg = 
-      robot_model_->getJointModelGroup(getGroupName());
+      robot_model_->getJointModelGroup(group);
   
   if (!jmg)
+  {
+    ROS_ERROR("DEBUG: JointModelGroup is NULL for '%s'!", group.c_str());
     return false;
+  }
   
   // Get start state
   moveit::core::RobotState start_state(robot_model_);
-  moveit::core::robotStateMsgToRobotState(request_.start_state, start_state);
   
+  try
+  {
+    moveit::core::robotStateMsgToRobotState(request_.start_state, start_state);
+  }
+  catch (const std::exception& e)
+  {
+    ROS_ERROR("DEBUG: Exception in robotStateMsgToRobotState: %s", e.what());
+    return false;
+  }
   std::vector<double> start_positions;
   start_state.copyJointGroupPositions(jmg, start_positions);
   
   start = Eigen::Map<Eigen::VectorXd>(start_positions.data(), start_positions.size());
   
-  // Get goal state (simplified - assumes joint space goal)
-  if (!request_.goal_constraints.empty() &&
-      !request_.goal_constraints[0].joint_constraints.empty())
+  if (!request_.goal_constraints.empty())
   {
-    goal.resize(start.size());
-    for (const auto& jc : request_.goal_constraints[0].joint_constraints)
+    
+    if (!request_.goal_constraints[0].joint_constraints.empty())
     {
-      auto idx = jmg->getVariableGroupIndex(jc.joint_name);
-      if (idx < goal.size())
+      goal.resize(start.size());
+      
+      for (size_t i = 0; i < request_.goal_constraints[0].joint_constraints.size(); ++i)
       {
-        goal[idx] = jc.position;
+        const auto& jc = request_.goal_constraints[0].joint_constraints[i];
+        auto idx = jmg->getVariableGroupIndex(jc.joint_name);
+        
+        if (idx < goal.size())
+        {
+          goal[idx] = jc.position;
+        }
+        else
+        {
+          ROS_WARN("DEBUG: Index %zu out of bounds (size=%ld)", idx, goal.size());
+        }
       }
+      return true;
     }
-    return true;
   }
   
+  ROS_WARN("DEBUG: No valid goal constraints found!");
   return false;
 }
+
 
 bool PCEPlanner::pceTrajectoryToJointTrajectory(
     const Trajectory& pce_traj,

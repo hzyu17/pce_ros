@@ -110,23 +110,33 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
 
   try
   {
+    ROS_INFO("DEBUG: Creating PCEPlanner...");
     auto planner = std::make_shared<PCEPlanner>(
         req.group_name,
         config_it->second,
         robot_model_,
         visualizer_
     );
+    ROS_INFO("DEBUG: PCEPlanner created");
 
+    ROS_INFO("DEBUG: Checking canServiceRequest...");
     if (!planner->canServiceRequest(req))
     {
       ROS_ERROR("Cannot service request for group '%s'", req.group_name.c_str());
       error_code.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
       return planning_interface::PlanningContextPtr();
     }
+    ROS_INFO("DEBUG: canServiceRequest passed");
 
+    ROS_INFO("DEBUG: Calling setPlanningScene...");
     planner->setPlanningScene(planning_scene);
+    ROS_INFO("DEBUG: setPlanningScene returned");
+    
+    ROS_INFO("DEBUG: Calling setMotionPlanRequest...");
     planner->setMotionPlanRequest(req);
+    ROS_INFO("DEBUG: setMotionPlanRequest returned");
 
+    ROS_INFO("DEBUG: About to return planner...");
     error_code.val = moveit_msgs::MoveItErrorCodes::SUCCESS;
     return planner;
   }

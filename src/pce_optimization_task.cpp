@@ -51,11 +51,14 @@ PCEOptimizationTask::PCEOptimizationTask(
   }
 
   // OPTIMIZATION: Set OpenMP threads (use all available cores)
+  /*
   int num_threads = omp_get_max_threads();
   omp_set_num_threads(num_threads);
   ROS_INFO("PCE will use %d OpenMP threads for parallel collision checking", num_threads);
+  */
 
-
+  ROS_INFO("OpenMP disabled for testing");
+  
 }
 
 PCEOptimizationTask::~PCEOptimizationTask()
@@ -65,6 +68,7 @@ PCEOptimizationTask::~PCEOptimizationTask()
 void PCEOptimizationTask::setPlanningScene(
     const planning_scene::PlanningSceneConstPtr& scene)
 {
+  
   if (!scene)
   {
     ROS_ERROR("Planning scene is NULL!");
@@ -76,7 +80,9 @@ void PCEOptimizationTask::setPlanningScene(
   
   // Create distance field using CHOMP's approach
   createDistanceFieldFromPlanningScene();
+  
 }
+
 
 void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
 {  
@@ -94,7 +100,8 @@ void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
       size_x, size_y, size_z,
       resolution,
       origin_x, origin_y, origin_z,
-      max_distance
+      max_distance,
+      true  // propagate - this is critical!
   );
     
   addCollisionObjectsToDistanceField();
@@ -105,8 +112,7 @@ void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
 
 
 void PCEOptimizationTask::addCollisionObjectsToDistanceField()
-{
-  ROS_ERROR("DEBUG: addCollisionObjectsToDistanceField START");
+{  
   
   if (!distance_field_ || !planning_scene_)
   {
@@ -115,7 +121,6 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
   }
   
   const collision_detection::WorldConstPtr& world = planning_scene_->getWorld();
-  
   if (!world)
   {
     ROS_WARN("World is NULL!");
@@ -125,58 +130,85 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
   std::vector<std::string> object_ids = world->getObjectIds();
   ROS_INFO("Adding %zu collision objects to distance field:", object_ids.size());
   
+  if (object_ids.empty())
+  {
+    ROS_WARN("No collision objects in world!");
+    return;
+  }
+  
+  // Cache resolution
+  double resolution = distance_field_->getResolution();
+  
+  // CRITICAL FIX: Use std::vector (default allocator) to avoid alignment issues
+  std::vector<Eigen::Vector3d> all_points;
+  all_points.reserve(10000);
+  
   int total_points = 0;
   
   for (const auto& id : object_ids)
   {
+    
     collision_detection::World::ObjectConstPtr obj = world->getObject(id);
-    if (!obj)
-    {
-      ROS_WARN("  Object '%s' is NULL!", id.c_str());
-      continue;
-    }
+    if (!obj) continue;
         
     std::vector<moveit_msgs::CollisionObject> collision_objects;
     planning_scene_->getCollisionObjectMsgs(collision_objects);
     
     Eigen::Isometry3d object_pose = Eigen::Isometry3d::Identity();
-    bool found_object_pose = false;
-    
     for (const auto& co_msg : collision_objects)
     {
       if (co_msg.id == id)
       {
         tf2::fromMsg(co_msg.pose, object_pose);
-        found_object_pose = true;
         break;
       }
-    }
-    
-    if (!found_object_pose)
-    {
-      ROS_WARN("    Could not find collision object message for '%s', using identity", id.c_str());
     }
     
     for (size_t i = 0; i < obj->shapes_.size(); ++i)
     {
       const shapes::ShapeConstPtr& shape = obj->shapes_[i];
+      if (!shape) continue;
+      
       const Eigen::Isometry3d& shape_pose_relative = obj->shape_poses_[i];
       Eigen::Isometry3d shape_pose_world = object_pose * shape_pose_relative;
-      
-      EigenSTL::vector_Vector3d points;
-      samplePointsFromShape(shape, shape_pose_world, distance_field_->getResolution(), points);
-      
-      if (!points.empty())
+            
+      // Call helper that uses std::vector instead of EigenSTL
+      std::vector<Eigen::Vector3d> shape_points;
+      samplePointsFromShape(shape, shape_pose_world, resolution, shape_points);
+            
+      if (!shape_points.empty())
       {
-        distance_field_->addPointsToField(points);
-        total_points += points.size();
-        ROS_INFO("    Added %zu points", points.size());
+        all_points.insert(all_points.end(), 
+                         shape_points.begin(), 
+                         shape_points.end());
+        total_points += shape_points.size();
       }
+
+    }
+    
+  }
+    
+  if (!all_points.empty())
+  {    
+    // Convert ONLY at the end for the API call
+    EigenSTL::vector_Vector3d df_points;
+    df_points.reserve(all_points.size());
+    
+    for (const auto& pt : all_points)
+    {
+      df_points.push_back(pt);
+    }
+        
+    try
+    {
+      distance_field_->addPointsToField(df_points);
+    }
+    catch (const std::exception& e)
+    {
+      ROS_ERROR("Exception: %s", e.what());
     }
   }
   
-  ROS_INFO("Distance field populated with %d total points", total_points);
-  ROS_ERROR("DEBUG: addCollisionObjectsToDistanceField END");
 }
 
 
@@ -184,7 +216,7 @@ void PCEOptimizationTask::samplePointsFromShape(
     const shapes::ShapeConstPtr& shape,
     const Eigen::Isometry3d& pose,
     double resolution,
-    EigenSTL::vector_Vector3d& points)
+    std::vector<Eigen::Vector3d>& points)
 {
   points.clear();
   
@@ -341,9 +373,8 @@ bool PCEOptimizationTask::setMotionPlanRequest(
     const moveit_msgs::MotionPlanRequest& req,
     moveit_msgs::MoveItErrorCodes& error_code)
 {
-  plan_request_ = req;
   
-  setPlanningScene(planning_scene);
+  plan_request_ = req;
   
   return true;
 }
@@ -352,7 +383,6 @@ bool PCEOptimizationTask::setMotionPlanRequest(
 std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
     const moveit::core::RobotState& state) const
 {
-  ROS_ERROR("DEBUG: getSphereLocations START");
   
   std::vector<Eigen::Vector3d> sphere_locations;
   
@@ -364,11 +394,8 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
     ROS_ERROR("DEBUG: Joint model group '%s' not found!", group_name_.c_str());
     return sphere_locations;
   }
-  
-  ROS_ERROR("DEBUG: Got joint model group");
-  
+    
   const std::vector<const moveit::core::LinkModel*>& links = jmg->getLinkModels();
-  ROS_ERROR("DEBUG: Got %zu links", links.size());
   
   sphere_locations.reserve(links.size() * 10);
   
@@ -376,45 +403,31 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
   {
     const auto* link = links[link_idx];
     
-    ROS_ERROR("DEBUG: Processing link %zu/%zu: %s", 
-              link_idx + 1, links.size(), 
-              link ? link->getName().c_str() : "NULL");
-    
     if (!link)
     {
       ROS_ERROR("DEBUG: Link is NULL, skipping");
       continue;
     }
     
-    ROS_ERROR("DEBUG: Getting link transform for '%s'", link->getName().c_str());
     const Eigen::Isometry3d& link_transform = state.getGlobalLinkTransform(link);
-    
-    ROS_ERROR("DEBUG: Getting shapes for '%s'", link->getName().c_str());
-    const std::vector<shapes::ShapeConstPtr>& shapes = link->getShapes();
-    
-    ROS_ERROR("DEBUG: Link '%s' has %zu shapes", link->getName().c_str(), shapes.size());
-    
+    const std::vector<shapes::ShapeConstPtr>& shapes = link->getShapes();    
     const EigenSTL::vector_Isometry3d& shape_poses = link->getCollisionOriginTransforms();
     
     if (shapes.size() != shape_poses.size())
     {
-      ROS_ERROR("DEBUG: Shape/pose size mismatch for link '%s' (%zu vs %zu)", 
-                link->getName().c_str(), shapes.size(), shape_poses.size());
       sphere_locations.push_back(link_transform.translation());
       continue;
     }
     
     if (shapes.empty())
     {
-      ROS_ERROR("DEBUG: No shapes for link '%s', using origin", link->getName().c_str());
+      ROS_WARN_ONCE("No shapes for link '%s', using origin", link->getName().c_str());
       sphere_locations.push_back(link_transform.translation());
       continue;
     }
     
     for (size_t s = 0; s < shapes.size(); ++s)
     {
-      ROS_ERROR("DEBUG: Link '%s' - Processing shape %zu/%zu", 
-                link->getName().c_str(), s + 1, shapes.size());
       
       const shapes::ShapeConstPtr& shape = shapes[s];
       
@@ -423,14 +436,11 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
         ROS_ERROR("DEBUG: Shape %zu is NULL for link '%s'", s, link->getName().c_str());
         continue;
       }
-      
-      ROS_ERROR("DEBUG: Shape %zu type: %d", s, (int)shape->type);
-      
+            
       Eigen::Isometry3d shape_transform = link_transform * shape_poses[s];
       
       if (shape->type == shapes::CYLINDER)
       {
-        ROS_ERROR("DEBUG: Processing CYLINDER");
         const shapes::Cylinder* cylinder =
             static_cast<const shapes::Cylinder*>(shape.get());
         
@@ -451,17 +461,13 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
           Eigen::Vector3d local_point(0, 0, z);
           sphere_locations.push_back(shape_transform * local_point);
         }
-        ROS_ERROR("DEBUG: CYLINDER done - added %d samples", num_samples);
       }
       else if (shape->type == shapes::SPHERE)
       {
-        ROS_ERROR("DEBUG: Processing SPHERE");
         sphere_locations.push_back(shape_transform.translation());
-        ROS_ERROR("DEBUG: SPHERE done");
       }
       else if (shape->type == shapes::BOX)
       {
-        ROS_ERROR("DEBUG: Processing BOX");
         const shapes::Box* box = static_cast<const shapes::Box*>(shape.get());
         
         if (!box || box->size[0] <= 0.0 || box->size[1] <= 0.0 || box->size[2] <= 0.0)
@@ -487,74 +493,43 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
         {
           sphere_locations.push_back(shape_transform * local_pt);
         }
-        ROS_ERROR("DEBUG: BOX done - added %zu points", local_points.size());
       }
       else if (shape->type == shapes::MESH)
       {
-        ROS_ERROR("DEBUG: !!!!! Processing MESH !!!!!");
         const shapes::Mesh* mesh = static_cast<const shapes::Mesh*>(shape.get());
         
-        ROS_ERROR("DEBUG: Mesh pointer: %p", (void*)mesh);
-        
-        if (!mesh)
+        if (!mesh || mesh->vertex_count == 0 || !mesh->vertices)
         {
-          ROS_ERROR("DEBUG: MESH is NULL!");
-          sphere_locations.push_back(shape_transform.translation());
-          continue;
-        }
-        
-        ROS_ERROR("DEBUG: Mesh vertex_count: %u", mesh->vertex_count);
-        ROS_ERROR("DEBUG: Mesh vertices pointer: %p", (void*)mesh->vertices);
-        
-        if (mesh->vertex_count == 0 || !mesh->vertices)
-        {
-          ROS_ERROR("DEBUG: MESH has no vertices!");
           sphere_locations.push_back(shape_transform.translation());
           continue;
         }
         
         if (mesh->vertex_count > 100000)
         {
-          ROS_ERROR("DEBUG: MESH too large (%u vertices)", mesh->vertex_count);
           sphere_locations.push_back(shape_transform.translation());
           continue;
         }
         
-        ROS_ERROR("DEBUG: Computing mesh bounding box...");
-        
+        // Compute bounding box
         double x_min = 1e9, x_max = -1e9;
         double y_min = 1e9, y_max = -1e9;
         double z_min = 1e9, z_max = -1e9;
-        
         bool valid = false;
         
         for (unsigned int i = 0; i < mesh->vertex_count; ++i)
-        {
-          if (i % 100 == 0)
-          {
-            ROS_ERROR("DEBUG: Processing vertex %u/%u", i, mesh->vertex_count);
-          }
-          
+        {          
           unsigned int idx = 3 * i;
           if (idx + 2 >= mesh->vertex_count * 3)
           {
-            ROS_ERROR("DEBUG: Vertex index %u out of bounds!", i);
             break;
           }
           
-          ROS_ERROR("DEBUG: Accessing mesh->vertices[%u]", idx);
           double vx = mesh->vertices[idx + 0];
-          ROS_ERROR("DEBUG: vx = %f", vx);
-          
           double vy = mesh->vertices[idx + 1];
-          ROS_ERROR("DEBUG: vy = %f", vy);
-          
           double vz = mesh->vertices[idx + 2];
-          ROS_ERROR("DEBUG: vz = %f", vz);
           
           if (!std::isfinite(vx) || !std::isfinite(vy) || !std::isfinite(vz))
           {
-            ROS_ERROR("DEBUG: Invalid vertex values (NaN/Inf)");
             continue;
           }
           
@@ -567,21 +542,56 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
           valid = true;
         }
         
-        ROS_ERROR("DEBUG: Bounding box computed");
-        
         if (!valid)
         {
-          ROS_ERROR("DEBUG: No valid bounding box");
           sphere_locations.push_back(shape_transform.translation());
           continue;
         }
         
-        ROS_ERROR("DEBUG: Bounds: [%.3f,%.3f] x [%.3f,%.3f] x [%.3f,%.3f]",
-                 x_min, x_max, y_min, y_max, z_min, z_max);
+        // Sample points throughout the bounding box
+        double size_x = x_max - x_min;
+        double size_y = y_max - y_min;
+        double size_z = z_max - z_min;
         
-        // Just use center point for now
-        sphere_locations.push_back(shape_transform.translation());
-        ROS_ERROR("DEBUG: MESH done - used center point");
+        // Determine sampling based on sphere overlap ratio
+        double spacing = collision_clearance_ * (1.0 - sphere_overlap_ratio_);
+        spacing = std::max(spacing, 0.03); // Minimum spacing
+        
+        int nx = std::max(1, std::min(4, (int)std::ceil(size_x / spacing)));
+        int ny = std::max(1, std::min(4, (int)std::ceil(size_y / spacing)));
+        int nz = std::max(1, std::min(4, (int)std::ceil(size_z / spacing)));
+        
+        // Limit total points
+        int max_points = 20;
+        if (nx * ny * nz > max_points)
+        {
+          double scale = std::pow(max_points / (double)(nx * ny * nz), 1.0/3.0);
+          nx = std::max(2, (int)(nx * scale));
+          ny = std::max(2, (int)(ny * scale));
+          nz = std::max(2, (int)(nz * scale));
+        }
+        
+        // Sample grid throughout bounding box
+        for (int ix = 0; ix < nx; ++ix)
+        {
+          for (int iy = 0; iy < ny; ++iy)
+          {
+            for (int iz = 0; iz < nz; ++iz)
+            {
+              double tx = (nx > 1) ? (double)ix / (nx - 1) : 0.5;
+              double ty = (ny > 1) ? (double)iy / (ny - 1) : 0.5;
+              double tz = (nz > 1) ? (double)iz / (nz - 1) : 0.5;
+              
+              Eigen::Vector3d local_point(
+                x_min + tx * size_x,
+                y_min + ty * size_y,
+                z_min + tz * size_z
+              );
+              
+              sphere_locations.push_back(shape_transform * local_point);
+            }
+          }
+        }
       }
       else
       {
@@ -590,11 +600,8 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
       }
     }
     
-    ROS_ERROR("DEBUG: Finished link '%s'", link->getName().c_str());
   }
-  
-  ROS_ERROR("DEBUG: getSphereLocations END - generated %zu locations", sphere_locations.size());
-  
+    
   return sphere_locations;
 }
 
@@ -646,65 +653,86 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
     ROS_WARN_THROTTLE(5.0, "Distance field not available!");
     return 0.0f;
   }
+
+
+  // Set OpenMP threads ONLY when actually using parallel code
+  static bool omp_initialized = false;
+  if (!omp_initialized)
+  {
+    int num_threads = omp_get_max_threads();
+    omp_set_num_threads(num_threads);
+    ROS_INFO("OpenMP initialized with %d threads for collision checking", num_threads);
+    omp_initialized = true;
+  }
   
   const size_t num_waypoints = trajectory.nodes.size();
   
-  // FIX #1: Resize OUTSIDE parallel region (not thread-safe operation)
+  // Resize OUTSIDE parallel region (not thread-safe operation)
   cached_sphere_locations_.resize(num_waypoints);
   
   const float MAX_ACCEPTABLE_COST = 5000.0f;
   
-  // FIX #2: Use atomic for early termination flag
+  // Use atomic for early termination flag
   std::atomic<bool> exceeded_threshold{false};
   
-  // FIX #3: Use reduction for sum (OpenMP handles synchronization)
+  // Use reduction for sum (OpenMP handles synchronization)
   float sum_squared_costs = 0.0f;
   
-  // FIX #4: Use proper OpenMP reduction pattern
-  #pragma omp parallel for reduction(+:sum_squared_costs) schedule(dynamic, 4)
+  // Use proper OpenMP reduction pattern
+  // OPTIMIZATION: Use guided scheduling for better load balancing
+  #pragma omp parallel for reduction(+:sum_squared_costs) schedule(guided, 2)
   for (size_t i = 0; i < num_waypoints; ++i)
   {
-    // FIX #5: Check early termination with relaxed memory ordering (faster)
     if (exceeded_threshold.load(std::memory_order_relaxed))
     {
       continue;
     }
     
-    // FIX #6: Thread-local RobotState (each thread creates its own)
-    // This is safe because robot_model_ptr_ is const
+    // Thread-local RobotState
     moveit::core::RobotState state(robot_model_ptr_);
     if (!trajectoryToRobotState(trajectory, i, state))
     {
       continue;
     }
     
-    // FIX #7: Thread-local sphere locations (no sharing)
+    // Get sphere locations
     std::vector<Eigen::Vector3d> sphere_locations = getSphereLocations(state);
     
-    // FIX #8: Store in cached array - different threads write to different indices
-    // This is SAFE because vector is already sized and indices don't overlap
+    // OPTIMIZATION: Early exit if too many spheres (something wrong)
+    if (sphere_locations.size() > 200)
+    {
+      ROS_WARN_THROTTLE(5.0, "Too many collision spheres (%zu), limiting to 200", 
+                        sphere_locations.size());
+      sphere_locations.resize(200);
+    }
+    
     cached_sphere_locations_[i] = std::move(sphere_locations);
     
-    // Compute cost for this waypoint (thread-local computation)
+    // Compute cost for this waypoint
     float waypoint_cost = 0.0f;
+    
     for (const Eigen::Vector3d& point : cached_sphere_locations_[i])
     {
-      // FIX #9: Distance field getDistance() is thread-safe for reads
       double distance = getDistanceAtPoint(point);
+      
+      // OPTIMIZATION: Skip if very far from obstacles
+      if (distance > collision_threshold_)
+      {
+        continue;
+      }
+      
       float point_cost = getObstacleCost(distance);
       waypoint_cost += point_cost * point_cost;
     }
     
-    // FIX #10: Reduction clause handles this automatically (no manual sync needed)
     sum_squared_costs += waypoint_cost;
     
-    // FIX #11: Update threshold flag atomically
+    // Early termination check
     if (waypoint_cost * sigma_obs_ > MAX_ACCEPTABLE_COST / num_waypoints)
     {
       exceeded_threshold.store(true, std::memory_order_relaxed);
     }
   }
-  // End of parallel region - reduction automatically combines results
   
   // Early termination check
   if (exceeded_threshold.load())

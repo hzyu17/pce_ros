@@ -155,7 +155,7 @@ protected:
       const shapes::ShapeConstPtr& shape,
       const Eigen::Isometry3d& pose,
       double resolution,
-      EigenSTL::vector_Vector3d& points);
+      std::vector<Eigen::Vector3d>& points);
   
   // Get signed distance at a point
   double getDistanceAtPoint(const Eigen::Vector3d& point) const;
