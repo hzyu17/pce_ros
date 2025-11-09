@@ -20,6 +20,10 @@
 #include "visualizer.h"
 #include <moveit/collision_detection/collision_tools.h>
 
+#ifdef USE_GPU
+#include "gpu_collision_bridge.h"
+#endif
+
 
 // Forward declarations for plugin types (you can adapt STOMP's or create your own)
 namespace pce_ros
@@ -84,6 +88,14 @@ public:
   // Implement pce::Task interface
   float computeCollisionCost(const Trajectory& trajectory) const override;
 
+  // Multiple trajectories (new overload) - returns vector of costs
+  std::vector<float> computeCollisionCost(
+        const std::vector<Trajectory>& trajectories) const override;
+
+  // Compute batch collision costs for multiple trajectories on GPU
+  std::vector<float> computeCollisionCostBatch(
+      const std::vector<Trajectory>& trajectories) const;
+
   bool filterTrajectory(Trajectory& trajectory, int iteration_number) override;
   
   void postIteration(int iteration_number, float cost, 
@@ -109,6 +121,13 @@ public:
   { 
     return cached_sphere_locations_; 
   }
+
+private:
+  // GPU bridge (optional)
+  #ifdef USE_GPU
+    mutable std::unique_ptr<GPUCollisionBridge> gpu_bridge_;
+    bool use_gpu_;
+  #endif
 
 protected:
   // Robot environment
