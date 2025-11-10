@@ -24,7 +24,7 @@ pce:
     pce_planner:
       num_samples: 3000
       num_iterations: 20
-      eta: 1.0
+      eta: 0.99
       temperature: 1.5
       convergence_threshold: 0.0001
       num_discretization: 20
@@ -32,5 +32,5 @@ pce:
 
     collision_clearance: 0.05
     collision_threshold: 0.05
-    sigma_obs: 500.0
+    sigma_obs: 1000.0
     sphere_overlap_ratio: 0.05      # Overlap between adjacent spheres (0.0-1.0)

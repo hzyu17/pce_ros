@@ -89,7 +89,6 @@ PCEVisualization::PCEVisualization(const VisualizationConfig& config, ros::NodeH
   : config_(config)
   , nh_(nh)
 {
-  // Create publishers
   collision_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
       config_.collision_spheres_topic, 10, true);
   
@@ -98,89 +97,9 @@ PCEVisualization::PCEVisualization(const VisualizationConfig& config, ros::NodeH
 
   distance_field_pub_ = nh_.advertise<visualization_msgs::MarkerArray>(
       config_.distance_field_topic, 10);
-  
-  // Wait for publishers to be ready
-  ros::Duration(0.5).sleep();
-  
-  ROS_INFO("PCE Visualization ready (spheres: %s, trajectory: %s)",
-           config_.enable_collision_spheres ? "ON" : "OFF",
-           config_.enable_trajectory ? "ON" : "OFF");
+
 }
 
-
-// std::vector<Eigen::Vector3d> PCEVisualization::getSphereLocations(
-//     const moveit::core::RobotState& state,
-//     const moveit::core::RobotModelConstPtr& robot_model,
-//     const std::string& group_name) const
-// {
-//   std::vector<Eigen::Vector3d> sphere_locations;
-  
-//   const moveit::core::JointModelGroup* jmg = robot_model->getJointModelGroup(group_name);
-//   if (!jmg)
-//   {
-//     return sphere_locations;
-//   }
-  
-//   const std::vector<const moveit::core::LinkModel*>& links = jmg->getLinkModels();
-  
-//   for (const auto* link : links)
-//   {
-//     const Eigen::Isometry3d& link_transform = state.getGlobalLinkTransform(link);
-//     const std::vector<shapes::ShapeConstPtr>& shapes = link->getShapes();
-//     const EigenSTL::vector_Isometry3d& shape_poses = link->getCollisionOriginTransforms();
-    
-//     for (size_t s = 0; s < shapes.size(); ++s)
-//     {
-//       const shapes::ShapeConstPtr& shape = shapes[s];
-//       Eigen::Isometry3d shape_transform = link_transform * shape_poses[s];
-      
-//       if (shape->type == shapes::CYLINDER)
-//       {
-//         const shapes::Cylinder* cylinder = static_cast<const shapes::Cylinder*>(shape.get());
-//         double length = cylinder->length;
-//         int num_samples = std::max(3, static_cast<int>(length / 0.05));
-        
-//         for (int i = 0; i < num_samples; ++i)
-//         {
-//           double t = static_cast<double>(i) / (num_samples - 1);
-//           double z = -length/2.0 + t * length;
-//           Eigen::Vector3d local_point(0, 0, z);
-//           sphere_locations.push_back(shape_transform * local_point);
-//         }
-//       }
-//       else if (shape->type == shapes::SPHERE)
-//       {
-//         sphere_locations.push_back(shape_transform.translation());
-//       }
-//       else if (shape->type == shapes::BOX)
-//       {
-//         const shapes::Box* box = static_cast<const shapes::Box*>(shape.get());
-//         double dx = box->size[0] / 2.0;
-//         double dy = box->size[1] / 2.0;
-//         double dz = box->size[2] / 2.0;
-        
-//         std::vector<Eigen::Vector3d> local_points = {
-//           Eigen::Vector3d(0, 0, 0),
-//           Eigen::Vector3d(dx, dy, dz), Eigen::Vector3d(dx, dy, -dz),
-//           Eigen::Vector3d(dx, -dy, dz), Eigen::Vector3d(dx, -dy, -dz),
-//           Eigen::Vector3d(-dx, dy, dz), Eigen::Vector3d(-dx, dy, -dz),
-//           Eigen::Vector3d(-dx, -dy, dz), Eigen::Vector3d(-dx, -dy, -dz)
-//         };
-        
-//         for (const auto& local_pt : local_points)
-//         {
-//           sphere_locations.push_back(shape_transform * local_pt);
-//         }
-//       }
-//       else
-//       {
-//         sphere_locations.push_back(shape_transform.translation());
-//       }
-//     }
-//   }
-  
-//   return sphere_locations;
-// }
 
 bool PCEVisualization::trajectoryToRobotState(
     const Trajectory& trajectory,
@@ -259,7 +178,7 @@ void PCEVisualization::visualizeCollisionSpheres(
     double collision_clearance,
     const distance_field::DistanceFieldConstPtr& distance_field) const
 {
-  if (!config_.enable_collision_spheres || collision_marker_pub_.getNumSubscribers() == 0)
+  if (!config_.enable_collision_spheres)
   {
     return;
   }
