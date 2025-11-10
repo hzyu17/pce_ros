@@ -20,10 +20,6 @@
 #include "visualizer.h"
 #include <moveit/collision_detection/collision_tools.h>
 
-#ifdef USE_GPU
-#include "gpu_collision_bridge.h"
-#endif
-
 
 // Forward declarations for plugin types (you can adapt STOMP's or create your own)
 namespace pce_ros
@@ -121,13 +117,6 @@ public:
   { 
     return cached_sphere_locations_; 
   }
-
-private:
-  // GPU bridge (optional)
-  #ifdef USE_GPU
-    mutable std::unique_ptr<GPUCollisionBridge> gpu_bridge_;
-    bool use_gpu_;
-  #endif
 
 protected:
   // Robot environment

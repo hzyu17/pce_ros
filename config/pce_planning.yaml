@@ -20,7 +20,6 @@ pce:
     distance_field_topic: "/pce/distance_field"
   
   panda_arm:
-    use_gpu: true  # Enable GPU acceleration
     pce_planner:
       num_samples: 3000
       num_iterations: 20

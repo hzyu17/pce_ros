@@ -14,9 +14,6 @@ PCEOptimizationTask::PCEOptimizationTask(
     const XmlRpc::XmlRpcValue& config)
   : robot_model_ptr_(robot_model_ptr)
   , group_name_(group_name)
-#ifdef USE_GPU
-  , use_gpu_(false)
-#endif
 {
   // Load collision parameters from config
   if (config.hasMember("collision_clearance"))
@@ -52,48 +49,6 @@ PCEOptimizationTask::PCEOptimizationTask(
   {
     ROS_INFO("  Using default sigma_obs: %.3f", sigma_obs_);
   }
-
-  #ifdef USE_GPU
-  // Check if GPU is requested
-  if (config.hasMember("use_gpu"))
-  {
-    use_gpu_ = static_cast<bool>(config["use_gpu"]);
-    
-    if (use_gpu_)
-    {
-      // Initialize GPU bridge
-      std::string urdf_path = "/path/to/robot.urdf";  // TODO: Get from robot model
-      std::string base_link = robot_model_ptr_->getRootLinkName();
-      std::string ee_link = "panda_hand";  // TODO: Get from config or robot model
-      
-      try
-      {
-        gpu_bridge_ = std::make_unique<GPUCollisionBridge>(
-            urdf_path,
-            base_link,
-            ee_link,
-            collision_clearance_
-        );
-        
-        if (!gpu_bridge_->isAvailable())
-        {
-          ROS_WARN("GPU not available, falling back to CPU");
-          use_gpu_ = false;
-        }
-        else
-        {
-          ROS_INFO("GPU acceleration enabled: %s", gpu_bridge_->getDeviceName().c_str());
-        }
-      }
-      catch (const std::exception& e)
-      {
-        ROS_ERROR("Failed to initialize GPU bridge: %s", e.what());
-        use_gpu_ = false;
-      }
-    }
-  }
-#endif
-
   
 }
 
@@ -945,60 +900,7 @@ std::vector<float> PCEOptimizationTask::computeCollisionCost(
     const std::vector<Trajectory>& trajectories) const 
 {    
     std::vector<float> costs;
-
-    // For multiple trajectories, use batch processing
-    #ifdef USE_GPU
-    const size_t GPU_BATCH_THRESHOLD = 100;
-    
-    ROS_INFO("GPU Support: COMPILED IN (USE_GPU defined)");
-    ROS_INFO("  use_gpu_ = %s", use_gpu_ ? "true" : "false");
-    ROS_INFO("  gpu_bridge_ = %s", gpu_bridge_ ? "valid" : "null");
-    ROS_INFO("  batch size = %zu (threshold = %zu)", trajectories.size(), GPU_BATCH_THRESHOLD);
-    
-    if (use_gpu_ && gpu_bridge_ && trajectories.size() >= GPU_BATCH_THRESHOLD)
-    {
-        ROS_INFO(">>> ATTEMPTING GPU PATH <<<");
         
-        auto start = std::chrono::high_resolution_clock::now();
-        
-        bool success = gpu_bridge_->checkBatch(trajectories, costs);
-        
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        
-        if (success)
-        {
-            ROS_INFO(">>> GPU PATH SUCCESS: %zu samples in %ld ms <<<", 
-                     trajectories.size(), duration.count());
-            
-            for (auto& cost : costs)
-            {
-                cost *= sigma_obs_;
-            }
-            
-            return costs;
-        }
-        else
-        {
-            ROS_WARN(">>> GPU PATH FAILED, FALLING BACK TO CPU <<<");
-        }
-    }
-    else
-    {
-        ROS_INFO(">>> USING CPU PATH <<<");
-        if (!use_gpu_) ROS_INFO("  Reason: use_gpu_ is false");
-        if (!gpu_bridge_) ROS_INFO("  Reason: gpu_bridge_ is null");
-        if (trajectories.size() < GPU_BATCH_THRESHOLD) 
-            ROS_INFO("  Reason: batch size %zu < threshold %zu", 
-                     trajectories.size(), GPU_BATCH_THRESHOLD);
-    }
-    #else
-      ROS_INFO(">>> USING CPU PATH (GPU NOT COMPILED) <<<");
-    #endif
-    
-    // CPU PATH - TEMPORARILY DISABLE PARALLELIZATION
-    ROS_DEBUG_THROTTLE(5.0, "Using sequential CPU for %zu trajectories", trajectories.size());
-    
     auto start = std::chrono::high_resolution_clock::now();
     
     costs.resize(trajectories.size());
