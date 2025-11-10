@@ -84,6 +84,14 @@ public:
   // Implement pce::Task interface
   float computeCollisionCost(const Trajectory& trajectory) const override;
 
+  // Multiple trajectories (new overload) - returns vector of costs
+  std::vector<float> computeCollisionCost(
+        const std::vector<Trajectory>& trajectories) const override;
+
+  // Compute batch collision costs for multiple trajectories on GPU
+  std::vector<float> computeCollisionCostBatch(
+      const std::vector<Trajectory>& trajectories) const;
+
   bool filterTrajectory(Trajectory& trajectory, int iteration_number) override;
   
   void postIteration(int iteration_number, float cost, 

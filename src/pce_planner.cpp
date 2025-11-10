@@ -244,17 +244,20 @@ bool PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   ROS_INFO("========================================================");
   ROS_INFO("Visualizing collision checking spheres for initial trajectory...");
   
-  // Get the initial trajectory
-  const Trajectory& initial_traj = pce_planner_->getCurrentTrajectory();
+  // Get the initial trajectory (use copy, not reference)
+  Trajectory initial_traj = pce_planner_->getCurrentTrajectory();
   
   // Compute collision cost (which caches sphere locations)
   float initial_cost = pce_task_->computeCollisionCost(initial_traj);
   ROS_INFO("Initial trajectory collision cost: %.4f", initial_cost);
   
   // Visualize the collision spheres
-  if (visualizer_)
-  {
-    visualizer_->visualizeCollisionSpheres(
+  if (!visualizer_) {
+      ROS_WARN("Visualizer is NULL - markers will not be published!");
+  } else {
+      ROS_INFO("Visualizer is active, publishing markers...");
+
+      visualizer_->visualizeCollisionSpheres(
         initial_traj,
         pce_task_->getCachedSphereLocations(),
         robot_model_,
@@ -269,53 +272,53 @@ bool PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
         group_name_,
         0
     );
-  }
-  
-  ROS_INFO("--------------------------------------------------------");
-  ROS_INFO("Check RViz to see the collision checking spheres.");
-  ROS_INFO("Total spheres per waypoint: %zu", 
-           pce_task_->getCachedSphereLocations().empty() ? 0 : 
-           pce_task_->getCachedSphereLocations()[0].size());
-  ROS_INFO("Total waypoints: %zu", initial_traj.nodes.size());
-  ROS_INFO("--------------------------------------------------------");
-  ROS_WARN("Starting optimization in 5 seconds...");
-  
-  // Keep visualizing for 5 seconds
-  ros::Rate rate(2);  // 2 Hz
-  for (int i = 0; i < 10; ++i)
-  {
-    if (visualizer_)
+
+    ROS_INFO("--------------------------------------------------------");
+    ROS_INFO("Check RViz to see the collision checking spheres.");
+    ROS_INFO("Total spheres per waypoint: %zu", 
+            pce_task_->getCachedSphereLocations().empty() ? 0 : 
+            pce_task_->getCachedSphereLocations()[0].size());
+    ROS_INFO("Total waypoints: %zu", initial_traj.nodes.size());
+    ROS_INFO("--------------------------------------------------------");
+    ROS_WARN("Starting optimization in 5 seconds...");
+    
+    // Keep visualizing for 5 seconds
+    ros::Rate rate(2);  // 2 Hz
+    for (int i = 0; i < 10; ++i)
     {
-      visualizer_->visualizeCollisionSpheres(
-          initial_traj,
-          pce_task_->getCachedSphereLocations(),
-          robot_model_,
-          group_name_,
-          pce_task_->getCollisionClearance(),
-          nullptr
-      );
+      if (visualizer_)
+      {
+        visualizer_->visualizeCollisionSpheres(
+            initial_traj,
+            pce_task_->getCachedSphereLocations(),
+            robot_model_,
+            group_name_,
+            pce_task_->getCollisionClearance(),
+            nullptr
+        );
+      }
+      ros::spinOnce();
+      rate.sleep();
     }
-    ros::spinOnce();
-    rate.sleep();
+
   }
   
   ROS_INFO("Starting optimization...");
   ROS_INFO("========================================================\n");
   
-  ROS_INFO("Calling pce_planner_->solve()...");
-  // Now solve (no parameters needed - everything was set in initialize)
+  // Run optimization
   if (!pce_planner_->solve())
   {
     ROS_ERROR("PCE optimization failed");
     res.error_code_.val = moveit_msgs::MoveItErrorCodes::PLANNING_FAILED;
     return false;
   }
-  ROS_INFO("PCE solve() returned TRUE");
 
   // Get the optimized trajectory
-  const Trajectory& pce_traj = pce_planner_->getCurrentTrajectory();
+  Trajectory pce_traj = pce_planner_->getCurrentTrajectory();
   
   ROS_INFO("Got trajectory with %zu nodes", pce_traj.nodes.size());
+  
   // Convert result to MoveIt trajectory
   trajectory_msgs::JointTrajectory joint_traj;
   if (!pceTrajectoryToJointTrajectory(pce_traj, joint_traj))

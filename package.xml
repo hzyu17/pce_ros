@@ -21,4 +21,5 @@
   <export>
     <moveit_core plugin="${prefix}/pce_planner_plugin.xml"/>
   </export>
+
 </package>

@@ -5,14 +5,16 @@ project(pce_ros)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
 # Release build type with optimizations
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Compiler optimization flags
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -DNDEBUG")
+# Compiler optimization flags (reduced for Eigen compatibility)
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2 -DNDEBUG")
+
+# Disable Eigen's internal parallelization (can conflict with sparse solvers)
+add_compile_definitions(EIGEN_DONT_PARALLELIZE)
 
 # Enable OpenMP for parallel processing
 find_package(OpenMP REQUIRED)
@@ -21,7 +23,7 @@ if(OpenMP_CXX_FOUND)
   message(STATUS "OpenMP enabled for parallelization")
 endif()
 
-
+# Find catkin and dependencies
 find_package(catkin REQUIRED COMPONENTS
   moveit_core
   moveit_ros_planning
@@ -37,6 +39,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(yaml-cpp REQUIRED)
 
+# Catkin package
 catkin_package(
   LIBRARIES pce_ros
   CATKIN_DEPENDS 
@@ -48,12 +51,17 @@ catkin_package(
     YAML_CPP
 )
 
+# Include directories
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIR}
 )
+
+###########
+## Build ##
+###########
 
 # PCE MoveIt library
 add_library(pce_ros
@@ -63,13 +71,17 @@ add_library(pce_ros
   src/visualizer.cpp
 )
 
+# Link dependencies
 target_link_libraries(pce_ros
   ${catkin_LIBRARIES}
   ${YAML_CPP_LIBRARIES}
   ${OpenMP_CXX_LIBRARIES}
 )
 
-# Install
+#############
+## Install ##
+#############
+
 install(TARGETS pce_ros
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 )
@@ -78,6 +90,12 @@ install(FILES pce_planner_plugin.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
+install(DIRECTORY config launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  OPTIONAL
+)
+
+# Build summary
 message(STATUS "==========================================")
 message(STATUS "PCE ROS - Build Configuration")
 message(STATUS "==========================================")

@@ -49,15 +49,6 @@ PCEOptimizationTask::PCEOptimizationTask(
   {
     ROS_INFO("  Using default sigma_obs: %.3f", sigma_obs_);
   }
-
-  // OPTIMIZATION: Set OpenMP threads (use all available cores)
-  /*
-  int num_threads = omp_get_max_threads();
-  omp_set_num_threads(num_threads);
-  ROS_INFO("PCE will use %d OpenMP threads for parallel collision checking", num_threads);
-  */
-
-  ROS_INFO("OpenMP disabled for testing");
   
 }
 
@@ -733,7 +724,7 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
       exceeded_threshold.store(true, std::memory_order_relaxed);
     }
   }
-  
+
   // Early termination check
   if (exceeded_threshold.load())
   {
@@ -903,5 +894,32 @@ bool PCEOptimizationTask::trajectoryToRobotState(
   
   return true;
 }
+
+
+std::vector<float> PCEOptimizationTask::computeCollisionCost(
+    const std::vector<Trajectory>& trajectories) const 
+{    
+    std::vector<float> costs;
+        
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    costs.resize(trajectories.size());
+    
+    // SEQUENTIAL (no OpenMP)
+    for (size_t i = 0; i < trajectories.size(); ++i)
+    {
+        costs[i] = computeCollisionCost(trajectories[i]);
+    }
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    
+    ROS_INFO_THROTTLE(5.0, "CPU: %zu samples in %ld ms (%.1f samples/sec)",
+                     trajectories.size(), duration.count(),
+                     trajectories.size() / (duration.count() / 1000.0));
+    
+    return costs;
+}
+
 
 } // namespace pce_ros
