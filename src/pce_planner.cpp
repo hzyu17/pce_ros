@@ -139,7 +139,7 @@ void PCEPlanner::setup()
   ROS_INFO("|   Samples per iteration:  %-32d |", pce_config_.num_samples);
   ROS_INFO("|   Max iterations:         %-32d |", pce_config_.num_iterations);
   ROS_INFO("|   Temperature:            %-32.3f |", pce_config_.temperature);
-  ROS_INFO("|   Elite ratio (eta):      %-32.3f |", pce_config_.eta);
+  ROS_INFO("|   Proximal step size (eta):      %-32.3f |", pce_config_.eta);
   ROS_INFO("+------------------------------------------------------------+");
   ROS_INFO("| TRAJECTORY PARAMETERS                                      |");
   ROS_INFO("+------------------------------------------------------------+");

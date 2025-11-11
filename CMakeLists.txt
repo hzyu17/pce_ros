@@ -69,6 +69,11 @@ add_library(pce_ros
   src/pce_planner.cpp
   src/pce_planner_manager.cpp
   src/visualizer.cpp
+
+  # NGD planner (NEW - reuses shared infrastructure!)
+  src/ngd_planner.cpp
+  src/ngd_planner_manager.cpp
+
 )
 
 # Link dependencies
