@@ -1,57 +1,66 @@
 <launch>
   <arg name="debug" default="false" />
   <arg name="arm_id" default="panda" />
-
-  <!-- By default we will load the gripper -->
   <arg name="load_gripper" default="true" />
-
-  <!-- Set execution mode for fake execution controllers -->
   <arg name="fake_execution_type" default="interpolate" />
-
   <arg name="publish_monitored_planning_scene" default="true"/>
   
   <!-- Load robot description -->
   <include file="$(find panda_moveit_config)/launch/planning_context.launch">
     <arg name="load_robot_description" value="true"/>
   </include>
-
-  <!-- Set PCE as the ONLY planning plugin -->
-  <param name="move_group/planning_plugin" value="pce_ros/PCEPlannerManager" />
   
-  <!-- Load PCE configuration -->
-  <rosparam command="load" file="$(find pce_ros)/config/pce_planning.yaml" ns="move_group"/>
-
+  <!-- Configure planning pipelines -->
+  <rosparam param="/move_group/planning_pipelines">
+    pce:
+      planning_plugin: pce_ros/PCEPlannerManager
+    ngd:
+      planning_plugin: pce_ros/NGDPlannerManager
+  </rosparam>
+  
+  <!-- Load PCE configuration into PCE pipeline namespace -->
+  <!-- This makes /move_group/planning_pipelines/pce/pce available -->
+  <rosparam command="load" file="$(find pce_ros)/config/pce_planning.yaml" ns="move_group/planning_pipelines/pce"/>
+  
+  <!-- Load NGD configuration into NGD pipeline namespace -->
+  <!-- This makes /move_group/planning_pipelines/ngd/ngd available -->
+  <rosparam command="load" file="$(find pce_ros)/config/pce_planning.yaml" ns="move_group/planning_pipelines/ngd"/>
+  
   <!-- TF setup -->
   <node pkg="tf2_ros" type="static_transform_publisher" name="virtual_joint_broadcaster_0" 
         args="0 0 0 0 0 0 world panda_link0" />
-
+  
   <!-- Fake joint states -->
   <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
     <rosparam param="source_list">[/move_group/fake_controller_joint_states]</rosparam>
   </node>
-
+  
   <!-- Robot state publisher -->
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" 
         respawn="true" output="screen" />
-
-  <!-- Start move_group node directly (not via include) -->
+  
+  <!-- Start move_group node -->
   <node name="move_group" pkg="moveit_ros_move_group" type="move_group" output="screen">
     <param name="allow_trajectory_execution" value="true"/>
     <param name="sense_for_plan/max_safe_path_cost" value="1"/>
     <param name="default_workspace_bounds" value="10"/>
     <param name="capabilities" value="" />
     <param name="disable_capabilities" value="" />
-
-    <param name="pce_config_file" value="$(find pce_ros)/config/pce_planning.yaml"/>
-
-    <!-- Publish the planning scene of the physical robot so that rviz plugin can know actual robot -->
+    
+    <!-- Set default pipeline -->
+    <param name="default_planning_pipeline" value="pce" />
+    
+    <!-- Config file parameters for reload functionality -->
+    <param name="planning_pipelines/pce/pce_config_file" value="$(find pce_ros)/config/pce_planning.yaml"/>
+    <param name="planning_pipelines/ngd/ngd_config_file" value="$(find pce_ros)/config/pce_planning.yaml"/>
+    
+    <!-- Publish the planning scene -->
     <param name="planning_scene_monitor/publish_planning_scene" value="$(arg publish_monitored_planning_scene)" />
     <param name="planning_scene_monitor/publish_geometry_updates" value="$(arg publish_monitored_planning_scene)" />
     <param name="planning_scene_monitor/publish_state_updates" value="$(arg publish_monitored_planning_scene)" />
     <param name="planning_scene_monitor/publish_transforms_updates" value="$(arg publish_monitored_planning_scene)" />
     
-    <!-- Planning -->
-    <param name="planning_plugin" value="pce_ros/PCEPlannerManager" />
+    <!-- Request adapters -->
     <param name="request_adapters" value="default_planner_request_adapters/AddTimeParameterization
                                           default_planner_request_adapters/FixWorkspaceBounds
                                           default_planner_request_adapters/FixStartStateBounds
@@ -69,17 +78,13 @@
     <param name="trajectory_execution/execution_duration_monitoring" value="false" />
     <param name="moveit_controller_manager" value="moveit_fake_controller_manager/MoveItFakeControllerManager" />
     
-    <!-- Sensors -->
-    <!-- <rosparam command="load" file="$(find panda_moveit_config)/config/sensors_3d.yaml" /> -->
-    
     <!-- Controllers -->
     <rosparam subst_value="true" file="$(find panda_moveit_config)/config/fake_controllers.yaml"/>
   </node>
-
+  
   <!-- Launch RViz -->
   <include file="$(find panda_moveit_config)/launch/moveit_rviz.launch">
     <arg name="rviz_config" value="$(find pce_ros)/config/pce_demo.rviz"/>
     <arg name="debug" value="$(arg debug)"/>
   </include>
-
 </launch>

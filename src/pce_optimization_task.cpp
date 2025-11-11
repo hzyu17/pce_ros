@@ -747,7 +747,7 @@ bool PCEOptimizationTask::filterTrajectory(Trajectory& trajectory, int iteration
     return false;
   }
   
-  // Get the active joint models - THIS LINE WAS MISSING
+  // Get the active joint models
   const std::vector<const moveit::core::JointModel*>& joint_models = 
       joint_model_group->getActiveJointModels();
   

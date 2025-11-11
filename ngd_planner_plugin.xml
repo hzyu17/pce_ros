@@ -1,0 +1,7 @@
+<library path="lib/libngd_planner_plugin">
+  <class name="pce_ros/NGDPlanner" type="pce_ros::NGDPlannerManager" base_class_type="planning_interface::PlannerManager">
+    <description>
+      NGD (Natural Gradient Descent) motion planner for MoveIt
+    </description>
+  </class>
+</library>

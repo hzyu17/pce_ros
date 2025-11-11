@@ -1,9 +1,19 @@
 <library path="lib/libpce_ros">
+  <!-- PCE Planner -->
   <class name="pce_ros/PCEPlannerManager" 
          type="pce_ros::PCEPlannerManager" 
          base_class_type="planning_interface::PlannerManager">
     <description>
       Proximal Cross-Entropy Method (PCE) motion planner for MoveIt
+    </description>
+  </class>
+  
+  <!-- NGD Planner -->
+  <class name="pce_ros/NGDPlannerManager" 
+         type="pce_ros::NGDPlannerManager" 
+         base_class_type="planning_interface::PlannerManager">
+    <description>
+      Natural Gradient Descent (NGD) motion planner for MoveIt
     </description>
   </class>
 </library>

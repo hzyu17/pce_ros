@@ -1,12 +1,13 @@
 Panels:
   - Class: rviz/Displays
-    Help Height: 138
+    Help Height: 0
     Name: Displays
     Property Tree Widget:
       Expanded:
         - /MotionPlanning1
+        - /MarkerArray1
       Splitter Ratio: 0.5
-    Tree Height: 138
+    Tree Height: 757
   - Class: rviz/Help
     Name: Help
   - Class: rviz/Views
@@ -42,7 +43,7 @@ Visualization Manager:
     - Acceleration_Scaling_Factor: 0.1
       Class: moveit_rviz_plugin/MotionPlanning
       Enabled: true
-      JointsTab_Use_Radians: false
+      JointsTab_Use_Radians: true
       Move Group Namespace: ""
       MoveIt_Allow_Approximate_IK: false
       MoveIt_Allow_External_Program: false
@@ -359,7 +360,17 @@ Visualization Manager:
       Marker Topic: /pce/trajectory
       Name: MarkerArray
       Namespaces:
-        {}
+        iteration_text: true
+        trajectory_path: true
+        trajectory_waypoints: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /ngd/collision_spheres
+      Name: MarkerArray
+      Namespaces:
+        collision_spheres: true
       Queue Size: 100
       Value: true
   Enabled: true
@@ -378,7 +389,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 3.5246834754943848
+      Distance: 5.752561092376709
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -394,14 +405,14 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.36000022292137146
+      Pitch: 0.15500032901763916
       Target Frame: panda_link0
-      Yaw: 0.5017622709274292
+      Yaw: 6.199944019317627
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 1267
+  Height: 1964
   Help:
     collapsed: false
   Hide Left Dock: false
@@ -410,9 +421,9 @@ Window Geometry:
     collapsed: false
   MotionPlanning - Trajectory Slider:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000003a300000457fc0200000007fb000000100044006900730070006c006100790073010000006e000001820000018200fffffffb0000000800480065006c00700000000342000000bb000000d400fffffffb0000000a00560069006500770073000000010c000000a40000013200fffffffb0000000c00430061006d00650072006100000002ff000001610000000000000000fb0000001e004d006f00740069006f006e00200050006c0061006e006e0069006e00670100000374000001890000000000000000fb00000044004d006f00740069006f006e0050006c0061006e006e0069006e00670020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000002600000026fb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e006701000001fc000002c9000002b800ffffff0000039a0000045700000001000000020000000100000002fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000100000000000003a300000710fc0200000007fb000000100044006900730070006c006100790073010000006e000003630000018200fffffffb0000000800480065006c00700000000342000000bb000000d400fffffffb0000000a00560069006500770073000000010c000000a40000013200fffffffb0000000c00430061006d00650072006100000002ff000001610000000000000000fb0000001e004d006f00740069006f006e00200050006c0061006e006e0069006e00670100000374000001890000000000000000fb00000044004d006f00740069006f006e0050006c0061006e006e0069006e00670020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000002600000026fb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e006701000003dd000003a1000002b900ffffff0000039a0000071000000001000000020000000100000002fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Views:
     collapsed: false
   Width: 1865
   X: 277
-  Y: 268
+  Y: 194
