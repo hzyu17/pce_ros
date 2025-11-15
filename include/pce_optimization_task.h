@@ -99,15 +99,19 @@ public:
   // Set planning scene and initialize distance field
   void setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene);
 
+  float getCollisionClearance() const { return collision_clearance_; }
+  float getCollisionThreshold() const { return collision_threshold_; }
+  float getSigmaObs() const { return sigma_obs_; }
+  float getSphereOverlapRatio() const { return sphere_overlap_ratio_; }
+
 protected:
   rclcpp::Node::SharedPtr node_;
 
   // Robot environment
   std::string group_name_;
   moveit::core::RobotModelConstPtr robot_model_ptr_;
-  planning_scene::PlanningSceneConstPtr planning_scene_ptr_;
-
-  // Distance field collision environment (like CHOMP uses)
+  
+  // Planning scene (mutable copy for distance field operations)
   planning_scene::PlanningScenePtr planning_scene_;  
   
   // Direct access to distance field
@@ -120,6 +124,8 @@ protected:
 
   float collision_clearance_ = 0.05f;  // Safety margin (epsilon)
   float collision_threshold_ = 0.07f;   // Max distance to consider
+  float sigma_obs_ = 1.0f;
+  float sphere_overlap_ratio_ = 0.5f;
   
   // Plugin management
   std::vector<cost_functions::PCECostFunctionPtr> cost_functions_;

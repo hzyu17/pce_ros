@@ -43,19 +43,6 @@ protected:
 };
 
 
-template<typename T>
-T getParam(const rclcpp::Node::SharedPtr& node,
-          const std::string& name,
-          const T& default_value)
-{
-  if (!node->has_parameter(name))
-  {
-  node->declare_parameter<T>(name, default_value);
-  }
-  return node->get_parameter(name).get_value<T>();
-}
-
-
 bool getConfigData(const rclcpp::Node::SharedPtr& node,
                   std::map<std::string, PCEConfig>& config,
                   const std::vector<std::string>& planning_groups,
@@ -78,28 +65,6 @@ bool getConfigData(const rclcpp::Node::SharedPtr& node,
     // task collision parameters
     group_config.collision_clearance = getParam<double>(node, base + ".collision_clearance", 0.05);
     group_config.collision_threshold = getParam<double>(node, base + ".collision_threshold", 0.07);
-
-    // node -> declare_parameter(group_param + ".num_iterations", 15);
-    // node -> declare_parameter(group_param + ".num_samples", 3000);
-    // node -> declare_parameter(group_param + ".temperature", 1.5);
-    // node -> declare_parameter(group_param + ".eta", 1.0);
-    // node -> declare_parameter(group_param + ".num_discretization", 20);
-    // node -> declare_parameter(group_param + ".total_time", 5.0);
-    // node -> declare_parameter(group_param + ".node_collision_radius", 0.1);
-    // node -> declare_parameter(base + ".collision_clearance", 0.05);
-    // node -> declare_parameter(base + ".collision_threshold", 0.07);
-
-    // group_config.num_iterations = node -> get_parameter(group_param + ".num_iterations").as_int();
-    // group_config.num_samples = node -> get_parameter(group_param + ".num_samples").as_int();
-    // group_config.temperature = node -> get_parameter(group_param + ".temperature").as_double();
-    // group_config.eta = node -> get_parameter(group_param + ".eta").as_double();
-    // group_config.num_discretization = node -> get_parameter(group_param + ".num_discretization").as_int();
-    // group_config.total_time = node -> get_parameter(group_param + ".total_time").as_double();
-    // group_config.node_collision_radius = node -> get_parameter(group_param + ".node_collision_radius").as_double();
-
-    // // task collision parameters
-    // group_config.collision_clearance = node -> get_parameter(base + ".collision_clearance").as_double();
-    // group_config.collision_threshold = node -> get_parameter(base + ".collision_threshold").as_double();
 
     // push into map
     config[group] = group_config;

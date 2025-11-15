@@ -8,12 +8,6 @@ PCEVisualization::PCEVisualization(const VisualizationConfig& config, const rclc
   : config_(config)
   , node_(node)
 {
-  RCLCPP_ERROR(node_->get_logger(), "========================================");
-  RCLCPP_ERROR(node_->get_logger(), "PCEVisualization constructor START");
-  RCLCPP_ERROR(node_->get_logger(), "  Node namespace: %s", node_->get_namespace());
-  RCLCPP_ERROR(node_->get_logger(), "  collision_spheres_topic: %s", config_.collision_spheres_topic.c_str());
-  RCLCPP_ERROR(node_->get_logger(), "========================================");
-
   // Create QoS profile
   rclcpp::QoS qos(10);
   qos.transient_local();  // Latched equivalent in ROS2
@@ -22,19 +16,11 @@ PCEVisualization::PCEVisualization(const VisualizationConfig& config, const rclc
   collision_marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
       config_.collision_spheres_topic, qos);
 
-  RCLCPP_ERROR(node_->get_logger(), "Collision marker publisher created!");
-  RCLCPP_ERROR(node_->get_logger(), "  Topic name: %s", collision_marker_pub_->get_topic_name());
-  RCLCPP_ERROR(node_->get_logger(), "  Publisher created successfully");
-
   trajectory_marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
       config_.trajectory_topic, qos);
-
-  RCLCPP_ERROR(node_->get_logger(), "Trajectory marker publisher created!");
-  RCLCPP_ERROR(node_->get_logger(), "  Topic name: %s", 
-               trajectory_marker_pub_->get_topic_name());
   
   distance_field_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
-      config_.distance_field_topic, 10);
+      config_.distance_field_topic, qos);
 
   RCLCPP_ERROR(node_->get_logger(), "Distance field publisher created!");
   RCLCPP_ERROR(node_->get_logger(), "  Topic name: %s", 
@@ -48,14 +34,37 @@ PCEVisualization::PCEVisualization(const VisualizationConfig& config, const rclc
   // Wait for publishers to be ready
   rclcpp::sleep_for(std::chrono::milliseconds(500));
 
-  RCLCPP_ERROR(node_->get_logger(), "========================================");
-  RCLCPP_ERROR(node_->get_logger(), "PCEVisualization constructor END");
-  RCLCPP_ERROR(node_->get_logger(), "========================================");
-
-  RCLCPP_INFO(node_->get_logger(), "PCE Visualization initialized (collision_spheres=%s, trajectory=%s)",
-              config_.enable_collision_spheres ? "enabled" : "disabled",
-              config_.enable_trajectory ? "enabled" : "disabled");
+  RCLCPP_INFO(node_->get_logger(), "PCE Visualization ready (collision_spheres=%s, trajectory=%s)",
+              config_.enable_collision_spheres ? "ON" : "OFF",
+              config_.enable_trajectory ? "ON" : "OFF");
 }
+
+VisualizationConfig PCEVisualization::loadConfig(const rclcpp::Node::SharedPtr& node, const std::string& ns)
+{
+  VisualizationConfig config;
+  std::string vis_params = ns + ".pce.visualization";
+
+  config.enable_collision_spheres = getParam<bool>(node, vis_params + ".enable_collision_spheres", true);
+  config.enable_trajectory = getParam<bool>(node, vis_params + ".enable_trajectory", true);
+  config.enable_distance_field = getParam<bool>(node, vis_params + ".enable_distance_field", false);
+  config.waypoint_size = getParam<double>(node, vis_params + ".waypoint_size", 0.02);
+  config.line_width = getParam<double>(node, vis_params + ".line_width", 0.01);
+  config.marker_lifetime = getParam<double>(node, vis_params + ".marker_lifetime", 0.5);
+  config.trajectory_decimation = getParam<int>(node, vis_params + ".trajectory_decimation", 10);
+  config.collision_clearance = getParam<float>(node, vis_params + ".collision_clearance", 0.05f);
+  config.collision_spheres_topic = getParam<std::string>(node, vis_params + ".collision_spheres_topic", "/pce/collision_spheres");
+  config.trajectory_topic = getParam<std::string>(node, vis_params + ".trajectory_topic", "/pce/trajectory");
+  config.distance_field_topic = getParam<std::string>(node, vis_params + ".distance_field_topic", "/pce/distance_field");
+
+  RCLCPP_INFO(node->get_logger(), "Loaded visualization config:");
+  RCLCPP_INFO(node->get_logger(), "  enable_collision_spheres: %s", config.enable_collision_spheres ? "true" : "false");
+  RCLCPP_INFO(node->get_logger(), "  enable_trajectory: %s", config.enable_trajectory ? "true" : "false");
+  RCLCPP_INFO(node->get_logger(), "  collision_clearance (used for sphere size): %.3f", config.collision_clearance);
+  RCLCPP_INFO(node->get_logger(), "  collision_spheres_topic: %s", config.collision_spheres_topic.c_str());
+
+  return config;
+}
+
 
 std::vector<Eigen::Vector3d> PCEVisualization::getSphereLocations(
     const moveit::core::RobotState& state,
