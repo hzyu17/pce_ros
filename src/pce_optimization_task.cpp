@@ -22,9 +22,11 @@ PCEOptimizationTask::PCEOptimizationTask(
   , group_name_(group_name)
   , node_(node)
 {
-  // Load parameters from config
-  collision_clearance_ = config.collision_clearance;
-  collision_threshold_ = config.collision_threshold;
+  // Load parameters from node
+  std::string base_param = "pce.pce." + group_name + ".pce_planner.";
+  collision_clearance_ = getParam<double>(node, base_param + "collision_clearance", 0.05);
+  collision_threshold_ = getParam<double>(node, base_param + "collision_threshold", 0.07);
+  sigma_obs_ = getParam<double>(node, base_param + "sigma_obs", 1.0);
 }
 
 void PCEOptimizationTask::setPlanningScene(
@@ -496,7 +498,7 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
   
   RCLCPP_INFO_ONCE(getLogger(), "Distance field is available, computing collision cost...");
   
-  float total_cost = 0.0f;
+  float sum_squared_costs = 0.0f;
   int collision_count = 0;
   int near_collision_count = 0;
   
@@ -543,11 +545,15 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
         }
       }
       
-      total_cost += point_cost;
+      sum_squared_costs += point_cost * point_cost;
     }
   }
+
+  float total_cost = sum_squared_costs * sigma_obs_;
   
-  RCLCPP_INFO_ONCE(getLogger(), "computeCollisionCost returning: %.4f", total_cost);
+  RCLCPP_INFO_ONCE(getLogger(), "computeCollisionCost returning: %.4f (sum_squared: %.4f, sigma_obs: %.3f)", 
+                total_cost, sum_squared_costs, sigma_obs_);
+
   
   return total_cost;
 }

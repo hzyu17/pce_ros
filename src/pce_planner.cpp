@@ -1,4 +1,5 @@
 #include "pce_planner.h"
+#include <yaml-cpp/yaml.h>
 #include <moveit/robot_state/conversions.hpp>
 
 namespace pce_ros
@@ -350,6 +351,89 @@ bool PCEPlanner::pceTrajectoryToJointTrajectory(
   }
   
   return true;
+}
+
+
+bool PCEPlanner::getConfigData(const rclcpp::Node::SharedPtr& node,
+                  std::map<std::string, PCEConfig>& config,
+                  const std::string& param)
+{
+  std::vector<std::string> planning_groups;
+  const std::string param_group = param + ".pce.planning_groups";
+  planning_groups = getParam<std::vector<std::string>>(node, param_group, {});
+  if (planning_groups.empty()){
+    RCLCPP_ERROR(getLogger(), "  ✗ Could not find parameter 'pce.planning_groups'");
+    return false;
+  }
+
+  RCLCPP_INFO(getLogger(), "  ✓ Found planning_groups with %zu entries:", planning_groups.size());
+  for (const auto& group : planning_groups)
+    RCLCPP_INFO(getLogger(), "    - %s", group.c_str());
+
+  for (const auto& group : planning_groups)
+  {
+    PCEConfig group_config;
+    std::string base = param + ".pce." + group;
+    std::string group_param = base + ".pce_planner";
+
+    // TODO: Try get_parameter_or function
+    group_config.num_iterations = getParam<int>(node, group_param + ".num_iterations", 15);
+    group_config.num_samples = getParam<int>(node, group_param + ".num_samples", 3000);
+    group_config.temperature = getParam<double>(node, group_param + ".temperature", 1.5);
+    group_config.eta = getParam<double>(node, group_param + ".eta", 1.0);
+    group_config.num_discretization = getParam<int>(node, group_param + ".num_discretization", 20);
+    group_config.total_time = getParam<double>(node, group_param + ".total_time", 5.0);
+    group_config.node_collision_radius = getParam<double>(node, group_param + ".node_collision_radius", 0.1);
+
+    // task collision parameters
+    // TODO: Delete these since already read in PCEOptimizationTask
+    group_config.collision_clearance = getParam<double>(node, base + ".collision_clearance", 0.05);
+    group_config.collision_threshold = getParam<double>(node, base + ".collision_threshold", 0.07);
+
+    // push into map
+    config[group] = group_config;
+
+    RCLCPP_INFO(getLogger(), "Loaded PCE config for group '%s'", group.c_str());
+  }
+
+  return true;
+}
+
+
+bool PCEPlanner::getConfigData(const std::string& yaml_dict,
+                std::map<std::string, PCEConfig>& config)
+{
+  try{
+    YAML::Node root = YAML::LoadFile(yaml_dict);
+    YAML::Node pce_node = root["pce"];
+    for (auto& [group_name, group_config] : config)
+    {
+      if (!pce_node[group_name])
+        continue;
+      
+      YAML::Node planner_node = pce_node[group_name]["pce_planner"];
+      if (planner_node["num_iterations"])
+        group_config.num_iterations = planner_node["num_iterations"].as<int>();
+      if (planner_node["num_samples"])
+        group_config.num_samples = planner_node["num_samples"].as<int>();
+      if (planner_node["temperature"])
+        group_config.temperature = planner_node["temperature"].as<double>();
+      if (planner_node["eta"])
+        group_config.eta = planner_node["eta"].as<double>();
+      if (planner_node["num_discretization"])
+        group_config.num_discretization = planner_node["num_discretization"].as<int>();
+      if (planner_node["total_time"])
+        group_config.total_time = planner_node["total_time"].as<double>();
+      if (planner_node["node_collision_radius"])
+        group_config.node_collision_radius = planner_node["node_collision_radius"].as<double>();
+    }
+    return true;
+  }
+  catch (const YAML::Exception& e)
+  {
+    RCLCPP_ERROR(getLogger(), "Failed to load YAML config: %s", e.what());
+    return false;
+  }
 }
 
 } // namespace pce_ros

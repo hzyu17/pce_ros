@@ -268,9 +268,9 @@ void PCEVisualization::visualizeCollisionSpheres(
       marker.pose.position.z = point.z();
       marker.pose.orientation.w = 1.0;
       
-      marker.scale.x = config_.sphere_size;
-      marker.scale.y = config_.sphere_size;
-      marker.scale.z = config_.sphere_size;
+      marker.scale.x = config_.collision_clearance * 2.0;  // Diameter
+      marker.scale.y = config_.collision_clearance * 2.0;
+      marker.scale.z = config_.collision_clearance * 2.0;
       
       if (distance_field)
       {

@@ -69,6 +69,20 @@ public:
    * @brief Check if this planner can service the request
    */
   bool canServiceRequest(const moveit_msgs::msg::MotionPlanRequest& req) const;
+
+  /**
+   * @brief Load configuration from ROS parameter server
+   * @param node ROS2 node shared pointer
+   * @param config Output: configuration map by group name
+   * @param param Parameter name (default: "pce")
+   * @return true if successful
+   */
+  static bool getConfigData(const rclcpp::Node::SharedPtr& node,
+                            std::map<std::string, PCEConfig>& config,
+                            const std::string& param = "pce");
+
+  static bool getConfigData(const std::string& yaml_dict,
+                            std::map<std::string, PCEConfig>& config);
   
   /**
    * @brief Set visualizer for trajectory visualization

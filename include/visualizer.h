@@ -53,7 +53,6 @@ struct VisualizationConfig
   std::string distance_field_topic = "/pce/distance_field";
   
   // Visualization parameters
-  double sphere_size = 0.04;           // Size of collision spheres
   double waypoint_size = 0.02;         // Size of trajectory waypoints
   double line_width = 0.01;            // Width of trajectory line
   double marker_lifetime = 0.5;        // How long markers persist

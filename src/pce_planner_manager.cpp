@@ -5,6 +5,8 @@
 
 #include "pce_planner_manager.h"
 #include <pluginlib/class_list_macros.hpp>
+#include <cstdlib>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 namespace pce_ros
 {
@@ -32,27 +34,7 @@ bool PCEPlannerManager::initialize(const moveit::core::RobotModelConstPtr& model
   RCLCPP_INFO(getLogger(), "=== PCEPlannerManager::initialize ===");
   RCLCPP_INFO(getLogger(), "  Namespace: '%s'", ns_.c_str());
 
-  std::vector<std::string> planning_groups;
-
-  rcl_interfaces::msg::ParameterDescriptor descriptor;
-  descriptor.description = "List of planning groups for PCE planner";
-  const std::string param_group = ns_ + ".pce.planning_groups";
-
-  if (!node_->has_parameter(param_group))
-    node_->declare_parameter(param_group, std::vector<std::string>{}, descriptor);
-
-  if (node_->get_parameter(param_group, planning_groups))
-  {
-    RCLCPP_INFO(getLogger(), "  ✓ Found planning_groups with %zu entries:", planning_groups.size());
-    for (const auto& group : planning_groups)
-      RCLCPP_INFO(getLogger(), "    - %s", group.c_str());
-  }
-  else
-  {
-    RCLCPP_ERROR(getLogger(), "  ✗ Could not find parameter 'pce.planning_groups'");
-  }
-
-  if (!getConfigData(node_, config_, planning_groups, "pce"))
+  if (!PCEPlanner::getConfigData(node_, config_, "pce"))
   {
     RCLCPP_ERROR(getLogger(), "PCEPlannerManager: Failed to load configuration data from parameter server");
     return false;
@@ -71,7 +53,6 @@ bool PCEPlannerManager::initialize(const moveit::core::RobotModelConstPtr& model
 
   return true;
 }
-
 
 void PCEPlannerManager::getPlanningAlgorithms(std::vector<std::string>& algs) const
 {
@@ -93,6 +74,17 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
     return planning_interface::PlanningContextPtr();
   }
 
+  std::string config_dict = ament_index_cpp::get_package_share_directory("pce_ros") + "/config/pce_planning.yaml";
+  RCLCPP_INFO(getLogger(), "Load config: %s", config_dict.c_str());
+
+  // Read fresh config from parameter server
+  if (!PCEPlanner::getConfigData(config_dict, config_))
+  {
+    RCLCPP_ERROR(getLogger(), "PCEPlannerManager: Failed to reload configuration data from parameter server");
+    error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
+    return planning_interface::PlanningContextPtr();
+  }
+
   auto config_it = config_.find(req.group_name);
   if (config_it == config_.end())
   {
@@ -100,7 +92,6 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
     error_code.val = moveit_msgs::msg::MoveItErrorCodes::INVALID_GROUP_NAME;
     return planning_interface::PlanningContextPtr();
   }
-  RCLCPP_INFO(getLogger(), "Found config for group '%s'", req.group_name.c_str());
 
   try
   {
@@ -109,7 +100,7 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
 
     if (!planner->canServiceRequest(req))
     {
-      RCLCPP_ERROR(getLogger(), "PCEPlannerManager: Cannot service request for group '%s'", req.group_name.c_str());
+      RCLCPP_ERROR(getLogger(), "Cannot service request for group '%s'", req.group_name.c_str());
       error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
       return planning_interface::PlanningContextPtr();
     }
@@ -122,7 +113,7 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
   }
   catch (const std::exception& e)
   {
-    RCLCPP_ERROR(getLogger(), "PCEPlannerManager: Failed to create planner: %s", e.what());
+    RCLCPP_ERROR(getLogger(), "Failed to create planner: %s", e.what());
     error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
     return planning_interface::PlanningContextPtr();
   }
