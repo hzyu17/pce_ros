@@ -13,6 +13,12 @@ class PCEPlannerManager : public planning_interface::PlannerManager
 {
 public:
   PCEPlannerManager();
+
+  ~PCEPlannerManager()
+  {
+    visualizer_.reset();
+    config_.clear();
+  }
   
   bool initialize(const moveit::core::RobotModelConstPtr& model,
                   const rclcpp::Node::SharedPtr& node,

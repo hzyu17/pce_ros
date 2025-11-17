@@ -90,8 +90,10 @@ public:
    */
   void visualizeCollisionSpheres(
       const Trajectory& trajectory,
+      const std::vector<std::vector<Eigen::Vector3d>>& sphere_locations_per_waypoint,
       const moveit::core::RobotModelConstPtr& robot_model,
       const std::string& group_name,
+      double collision_clearance,
       const distance_field::DistanceFieldConstPtr& distance_field = nullptr) const;
   
   /**
@@ -168,7 +170,7 @@ private:
    * @param distance Signed distance (negative = collision)
    * @return RGBA color
    */
-  std_msgs::msg::ColorRGBA getColorFromDistance(double distance) const;
+  std_msgs::msg::ColorRGBA getColorFromDistance(double distance, double collision_clearance) const;
   
   /**
    * @brief Get gradient color for trajectory visualization

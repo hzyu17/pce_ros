@@ -3,6 +3,31 @@
 
 namespace pce_ros
 {
+VisualizationConfig PCEVisualization::loadConfig(const rclcpp::Node::SharedPtr& node, const std::string& ns)
+{
+  VisualizationConfig config;
+  std::string vis_params = ns + ".pce.visualization";
+
+  config.enable_collision_spheres = getParam<bool>(node, vis_params + ".enable_collision_spheres", true);
+  config.enable_trajectory = getParam<bool>(node, vis_params + ".enable_trajectory", true);
+  config.enable_distance_field = getParam<bool>(node, vis_params + ".enable_distance_field", false);
+  config.waypoint_size = getParam<double>(node, vis_params + ".waypoint_size", 0.02);
+  config.line_width = getParam<double>(node, vis_params + ".line_width", 0.01);
+  config.marker_lifetime = getParam<double>(node, vis_params + ".marker_lifetime", 0.5);
+  config.trajectory_decimation = getParam<int>(node, vis_params + ".trajectory_decimation", 10);
+  config.collision_clearance = getParam<double>(node, vis_params + ".collision_clearance", 0.05);
+  config.collision_spheres_topic = getParam<std::string>(node, vis_params + ".collision_spheres_topic", "/pce/collision_spheres");
+  config.trajectory_topic = getParam<std::string>(node, vis_params + ".trajectory_topic", "/pce/trajectory");
+  config.distance_field_topic = getParam<std::string>(node, vis_params + ".distance_field_topic", "/pce/distance_field");
+
+  RCLCPP_INFO(node->get_logger(), "Loaded visualization config:");
+  RCLCPP_INFO(node->get_logger(), "  enable_collision_spheres: %s", config.enable_collision_spheres ? "true" : "false");
+  RCLCPP_INFO(node->get_logger(), "  enable_trajectory: %s", config.enable_trajectory ? "true" : "false");
+  RCLCPP_INFO(node->get_logger(), "  collision_clearance (used for sphere size): %.3f", config.collision_clearance);
+  RCLCPP_INFO(node->get_logger(), "  collision_spheres_topic: %s", config.collision_spheres_topic.c_str());
+
+  return config;
+}
 
 PCEVisualization::PCEVisualization(const VisualizationConfig& config, const rclcpp::Node::SharedPtr& node)
   : config_(config)
@@ -39,31 +64,6 @@ PCEVisualization::PCEVisualization(const VisualizationConfig& config, const rclc
               config_.enable_trajectory ? "ON" : "OFF");
 }
 
-VisualizationConfig PCEVisualization::loadConfig(const rclcpp::Node::SharedPtr& node, const std::string& ns)
-{
-  VisualizationConfig config;
-  std::string vis_params = ns + ".pce.visualization";
-
-  config.enable_collision_spheres = getParam<bool>(node, vis_params + ".enable_collision_spheres", true);
-  config.enable_trajectory = getParam<bool>(node, vis_params + ".enable_trajectory", true);
-  config.enable_distance_field = getParam<bool>(node, vis_params + ".enable_distance_field", false);
-  config.waypoint_size = getParam<double>(node, vis_params + ".waypoint_size", 0.02);
-  config.line_width = getParam<double>(node, vis_params + ".line_width", 0.01);
-  config.marker_lifetime = getParam<double>(node, vis_params + ".marker_lifetime", 0.5);
-  config.trajectory_decimation = getParam<int>(node, vis_params + ".trajectory_decimation", 10);
-  config.collision_clearance = getParam<float>(node, vis_params + ".collision_clearance", 0.05f);
-  config.collision_spheres_topic = getParam<std::string>(node, vis_params + ".collision_spheres_topic", "/pce/collision_spheres");
-  config.trajectory_topic = getParam<std::string>(node, vis_params + ".trajectory_topic", "/pce/trajectory");
-  config.distance_field_topic = getParam<std::string>(node, vis_params + ".distance_field_topic", "/pce/distance_field");
-
-  RCLCPP_INFO(node->get_logger(), "Loaded visualization config:");
-  RCLCPP_INFO(node->get_logger(), "  enable_collision_spheres: %s", config.enable_collision_spheres ? "true" : "false");
-  RCLCPP_INFO(node->get_logger(), "  enable_trajectory: %s", config.enable_trajectory ? "true" : "false");
-  RCLCPP_INFO(node->get_logger(), "  collision_clearance (used for sphere size): %.3f", config.collision_clearance);
-  RCLCPP_INFO(node->get_logger(), "  collision_spheres_topic: %s", config.collision_spheres_topic.c_str());
-
-  return config;
-}
 
 
 std::vector<Eigen::Vector3d> PCEVisualization::getSphereLocations(
@@ -173,32 +173,27 @@ bool PCEVisualization::trajectoryToRobotState(
   return true;
 }
 
-std_msgs::msg::ColorRGBA PCEVisualization::getColorFromDistance(double distance) const
+std_msgs::msg::ColorRGBA PCEVisualization::getColorFromDistance(
+    double distance, 
+    double collision_clearance) const  // ← ADD PARAMETER
 {
   std_msgs::msg::ColorRGBA color;
   color.a = 0.8;
   
   if (distance < 0.0)
   {
-    // Red - collision
-    color.r = 1.0;
-    color.g = 0.0;
-    color.b = 0.0;
+    color.r = 1.0; color.g = 0.0; color.b = 0.0;  // Red - collision
   }
-  else if (distance < config_.collision_clearance)
+  else if (distance < collision_clearance)
   {
-    // Yellow to green gradient
-    float ratio = distance / config_.collision_clearance;
+    float ratio = distance / collision_clearance;
     color.r = 1.0 - ratio;
     color.g = 1.0;
-    color.b = 0.0;
+    color.b = 0.0;  // Yellow to green gradient
   }
   else
   {
-    // Green - safe
-    color.r = 0.0;
-    color.g = 1.0;
-    color.b = 0.0;
+    color.r = 0.0; color.g = 1.0; color.b = 0.0;  // Green - safe
   }
   
   return color;
@@ -216,8 +211,10 @@ std_msgs::msg::ColorRGBA PCEVisualization::getGradientColor(float ratio) const
 
 void PCEVisualization::visualizeCollisionSpheres(
     const Trajectory& trajectory,
+    const std::vector<std::vector<Eigen::Vector3d>>& sphere_locations_per_waypoint,
     const moveit::core::RobotModelConstPtr& robot_model,
     const std::string& group_name,
+    double collision_clearance,
     const distance_field::DistanceFieldConstPtr& distance_field) const
 {
   RCLCPP_INFO(node_->get_logger(), "visualizeCollisionSpheres called");
@@ -226,15 +223,9 @@ void PCEVisualization::visualizeCollisionSpheres(
   RCLCPP_INFO(node_->get_logger(), "  subscribers: %zu", 
               collision_marker_pub_->get_subscription_count());
   
-  if (!config_.enable_collision_spheres)
-  {
-    RCLCPP_WARN(node_->get_logger(), "Collision spheres visualization is disabled in config");
-    return;
-  }
   
-  if (collision_marker_pub_->get_subscription_count() == 0)
+  if (!config_.enable_collision_spheres || collision_marker_pub_->get_subscription_count() == 0)
   {
-    RCLCPP_WARN(node_->get_logger(), "No subscribers to /pce/collision_spheres");
     return;
   }
   
@@ -245,13 +236,11 @@ void PCEVisualization::visualizeCollisionSpheres(
   
   for (size_t i = 0; i < trajectory.nodes.size(); i += step)
   {
-    moveit::core::RobotState state(robot_model);
-    if (!trajectoryToRobotState(trajectory, i, state, robot_model, group_name))
-    {
+    // Use pre-computed sphere locations
+    if (i >= sphere_locations_per_waypoint.size())
       continue;
-    }
-    
-    std::vector<Eigen::Vector3d> sphere_locations = getSphereLocations(state, robot_model, group_name);
+      
+    const std::vector<Eigen::Vector3d>& sphere_locations = sphere_locations_per_waypoint[i];
     
     for (const Eigen::Vector3d& point : sphere_locations)
     {
@@ -268,14 +257,14 @@ void PCEVisualization::visualizeCollisionSpheres(
       marker.pose.position.z = point.z();
       marker.pose.orientation.w = 1.0;
       
-      marker.scale.x = config_.collision_clearance * 2.0;  // Diameter
-      marker.scale.y = config_.collision_clearance * 2.0;
-      marker.scale.z = config_.collision_clearance * 2.0;
+      marker.scale.x = collision_clearance * 2.0;  // Diameter
+      marker.scale.y = collision_clearance * 2.0;
+      marker.scale.z = collision_clearance * 2.0;
       
       if (distance_field)
       {
         double distance = distance_field->getDistance(point.x(), point.y(), point.z());
-        marker.color = getColorFromDistance(distance);
+        marker.color = getColorFromDistance(distance, collision_clearance);
       }
       else
       {

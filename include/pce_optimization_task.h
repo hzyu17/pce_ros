@@ -104,6 +104,11 @@ public:
   float getSigmaObs() const { return sigma_obs_; }
   float getSphereOverlapRatio() const { return sphere_overlap_ratio_; }
 
+  const std::vector<std::vector<Eigen::Vector3d>>& getCachedSphereLocations() const 
+  { 
+    return cached_sphere_locations_; 
+  }
+
 protected:
   rclcpp::Node::SharedPtr node_;
 
@@ -126,6 +131,8 @@ protected:
   float collision_threshold_ = 0.07f;   // Max distance to consider
   float sigma_obs_ = 1.0f;
   float sphere_overlap_ratio_ = 0.5f;
+
+  mutable std::vector<std::vector<Eigen::Vector3d>> cached_sphere_locations_;  // Per waypoint
   
   // Plugin management
   std::vector<cost_functions::PCECostFunctionPtr> cost_functions_;

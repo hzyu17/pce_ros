@@ -31,6 +31,9 @@ PCEPlanner::PCEPlanner(
 
 PCEPlanner::~PCEPlanner()
 {
+  pce_planner_.reset();
+  pce_task_.reset();
+  visualizer_.reset();
 }
 
 void PCEPlanner::setup()
@@ -81,7 +84,7 @@ void PCEPlanner::setup()
   RCLCPP_INFO(getLogger(), "+------------------------------------------------------------+");
   RCLCPP_INFO(getLogger(), "|   Collision clearance:    %-32.3f |", pce_task_->getCollisionClearance());
   RCLCPP_INFO(getLogger(), "|   Collision threshold:    %-32.3f |", pce_task_->getCollisionThreshold());
-  RCLCPP_INFO(getLogger(), "|   Sigma obs (weight):     %-32.3f |", pce_task_->getSigmaObs()); 
+  RCLCPP_INFO(getLogger(), "|   Sigma obs (weight):     %-32.3f |", pce_task_->getSigmaObs());
   RCLCPP_INFO(getLogger(), "|   Sphere overlap ratio:   %-32.3f |", pce_task_->getSphereOverlapRatio());
   RCLCPP_INFO(getLogger(), "+============================================================+");
 }
@@ -189,11 +192,70 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
     res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::FAILURE;
     return;
   }
-  
+
   RCLCPP_INFO(getLogger(), "PCE planner initialized successfully");
-  RCLCPP_INFO(getLogger(), "Starting PCE optimization...");
+
+
+  RCLCPP_INFO(getLogger(), "========================================================");
+  RCLCPP_INFO(getLogger(), "COLLISION SPHERE PREVIEW");
+  RCLCPP_INFO(getLogger(), "========================================================");
+  RCLCPP_INFO(getLogger(), "Visualizing collision checking spheres for initial trajectory...");
   
-  // Solve the planning problem
+  // Get the initial trajectory
+  const Trajectory& initial_traj = pce_planner_->getCurrentTrajectory();
+  
+  // Compute collision cost (which caches sphere locations)
+  float initial_cost = pce_task_->computeCollisionCost(initial_traj);
+  RCLCPP_INFO(getLogger(), "Initial trajectory collision cost: %.4f", initial_cost);
+  
+  // Visualize the collision spheres
+  if (visualizer_)
+  {
+    visualizer_->visualizeCollisionSpheres(
+        initial_traj,
+        pce_task_->getCachedSphereLocations(),
+        robot_model_,
+        group_name_,
+        pce_task_->getCollisionClearance(),
+        nullptr
+    );
+    
+    visualizer_->visualizeTrajectory(
+        initial_traj,
+        robot_model_,
+        group_name_,
+        0
+    );
+  }
+  
+  RCLCPP_INFO(getLogger(), "--------------------------------------------------------");
+  RCLCPP_INFO(getLogger(), "Check RViz to see the collision checking spheres.");
+  RCLCPP_INFO(getLogger(), "Total spheres per waypoint: %zu", 
+           pce_task_->getCachedSphereLocations().empty() ? 0 : 
+           pce_task_->getCachedSphereLocations()[0].size());
+  RCLCPP_INFO(getLogger(), "Total waypoints: %zu", initial_traj.nodes.size());
+  RCLCPP_INFO(getLogger(), "--------------------------------------------------------");
+  RCLCPP_WARN(getLogger(), "Starting optimization in 5 seconds...");
+  
+  // Keep visualizing for 5 seconds
+  if (visualizer_)
+  {
+    visualizer_->visualizeCollisionSpheres(
+        initial_traj,
+        pce_task_->getCachedSphereLocations(),
+        robot_model_,
+        group_name_,
+        pce_task_->getCollisionClearance(),
+        nullptr
+    );
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 2 Hz = 500ms
+  
+  RCLCPP_INFO(getLogger(), "Starting optimization...");
+  RCLCPP_INFO(getLogger(), "========================================================\n");
+  
+  RCLCPP_INFO(getLogger(), "Calling pce_planner_->solve()...");
+  // Now solve (no parameters needed - everything was set in initialize)
   if (!pce_planner_->solve())
   {
     RCLCPP_ERROR(getLogger(), "PCE optimization failed to find valid solution");
