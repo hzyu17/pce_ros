@@ -24,7 +24,7 @@ pce:
     
     waypoint_size: 0.02
     line_width: 0.01
-    marker_lifetime: 300.0
+    marker_lifetime: 50.0
     trajectory_decimation: 10
     
     collision_spheres_topic: "/pce/collision_spheres"
@@ -33,10 +33,10 @@ pce:
   
   panda_arm:
     pce_planner:
-      num_samples: 3000
+      num_samples: 1000
       num_iterations: 20
-      eta: 0.99
-      temperature: 2.0
+      eta: 1.0
+      temperature: 1.5
       convergence_threshold: 0.0001
       num_discretization: 20
       total_time: 5.0
@@ -44,5 +44,5 @@ pce:
 
     collision_clearance: 0.05
     collision_threshold: 0.05
-    sigma_obs: 100.0
-    sphere_overlap_ratio: 0.1      # Overlap between adjacent spheres (0.0-1.0)
+    sigma_obs: 500.0
+    sphere_overlap_ratio: 0.05      # Overlap between adjacent spheres (0.0-1.0)

@@ -143,17 +143,17 @@ private:
   mutable rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr trajectory_marker_pub_;
   mutable rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr distance_field_pub_;
 
-  /**
-   * @brief Get sphere locations on robot body for collision checking
-   * @param state Robot state
-   * @param robot_model Robot model
-   * @param group_name Planning group
-   * @return Vector of 3D points on robot surface
-   */
-  std::vector<Eigen::Vector3d> getSphereLocations(
-      const moveit::core::RobotState& state,
-      const moveit::core::RobotModelConstPtr& robot_model,
-      const std::string& group_name) const;
+  // /**
+  //  * @brief Get sphere locations on robot body for collision checking
+  //  * @param state Robot state
+  //  * @param robot_model Robot model
+  //  * @param group_name Planning group
+  //  * @return Vector of 3D points on robot surface
+  //  */
+  // std::vector<Eigen::Vector3d> getSphereLocations(
+  //     const moveit::core::RobotState& state,
+  //     const moveit::core::RobotModelConstPtr& robot_model,
+  //     const std::string& group_name) const;
   
   /**
    * @brief Convert trajectory node to robot state

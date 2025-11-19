@@ -84,16 +84,13 @@ public:
   static bool getConfigData(const std::string& yaml_dict,
                             std::map<std::string, PCEConfig>& config);
   
-  /**
-   * @brief Set visualizer for trajectory visualization
-   * @param viz Shared pointer to PCEVisualization instance
-   */
-  void setVisualizer(std::shared_ptr<PCEVisualization> viz);
+  void setVisualizer(std::shared_ptr<PCEVisualization> viz) {
+    visualizer_ = viz;
+  }
 
-    /**
-   * @brief Set planning scene for collision checking
-   * @param scene Const shared pointer to planning scene
-   */
+
+  void setMotionPlanRequest(const planning_interface::MotionPlanRequest& req);
+
   void setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene);
 
 protected:

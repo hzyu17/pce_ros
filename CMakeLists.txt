@@ -5,6 +5,15 @@ project(pce_ros)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+
+# Release build type with optimizations
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Compiler optimization flags
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -DNDEBUG")
+
 # === Dependencies ===
 find_package(moveit_common REQUIRED)
 moveit_package()
@@ -23,6 +32,13 @@ find_package(tf2_eigen_kdl REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
+
+# Enable OpenMP for parallel processing
+find_package(OpenMP REQUIRED)
+if(OpenMP_CXX_FOUND)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  message(STATUS "OpenMP enabled for parallelization")
+endif()
 
 include_directories(
   include
@@ -52,7 +68,7 @@ ament_target_dependencies(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME}
-  yaml-cpp
+  yaml-cpp OpenMP::OpenMP_CXX
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -103,4 +119,19 @@ ament_export_dependencies(
   visualization_msgs
   std_msgs
 )
+
+
+#
+# ===================================================================
+#  Print Build Configuration
+# ===================================================================
+#
+message(STATUS "==========================================")
+message(STATUS "PCE ROS2 - Build Configuration")
+message(STATUS "==========================================")
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "OpenMP: ${OpenMP_CXX_FOUND}")
+message(STATUS "==========================================")
+
 ament_package()

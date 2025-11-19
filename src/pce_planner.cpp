@@ -90,16 +90,11 @@ void PCEPlanner::setup()
 }
 
 
-void PCEPlanner::setVisualizer(std::shared_ptr<PCEVisualization> viz)
+void PCEPlanner::setMotionPlanRequest(const planning_interface::MotionPlanRequest& req)
 {
-  visualizer_ = viz;
-  
-  if (pce_task_ && visualizer_)
-  {
-    pce_task_->setVisualizer(visualizer_);
-    RCLCPP_INFO(getLogger(), "Visualizer set for PCEPlanner and task");
-  }
+  request_ = req;
 }
+
 
 void PCEPlanner::setPlanningScene(const planning_scene::PlanningSceneConstPtr& scene)
 {  
@@ -166,8 +161,6 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
     res.error_code = error_code;
     return;
   }
-
-  RCLCPP_INFO(getLogger(), "Motion plan request set in task");
   
   // Populate PCE config with start and goal
   pce_config_.num_dimensions = start.size();
@@ -181,20 +174,28 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
     pce_config_.start_position[i] = static_cast<float>(start[i]);
     pce_config_.goal_position[i] = static_cast<float>(goal[i]);
   }
-  
-  RCLCPP_INFO(getLogger(), "Initializing PCE planner with %zu dimensions...", 
-              pce_config_.num_dimensions);
-  
-  // Initialize planner (sets up start_node_, goal_node_, and trajectory)
-  if (!pce_planner_->initialize(pce_config_))
+    
+  try
   {
-    RCLCPP_ERROR(getLogger(), "PCE planner initialization failed");
+    if (!pce_planner_->initialize(pce_config_))
+    {
+      RCLCPP_ERROR(getLogger(), "Failed to initialize PCE planner");
+      res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::FAILURE;
+      return;
+    }
+  }
+  catch (const std::exception& e)
+  {
+    RCLCPP_ERROR(getLogger(), "Exception in pce_planner_->initialize: %s", e.what());
     res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::FAILURE;
     return;
   }
-
-  RCLCPP_INFO(getLogger(), "PCE planner initialized successfully");
-
+  catch (...)
+  {
+    RCLCPP_ERROR(getLogger(), "Unknown exception in pce_planner_->initialize");
+    res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::FAILURE;
+    return;
+  }
 
   RCLCPP_INFO(getLogger(), "========================================================");
   RCLCPP_INFO(getLogger(), "COLLISION SPHERE PREVIEW");
@@ -338,42 +339,67 @@ bool PCEPlanner::canServiceRequest(const moveit_msgs::msg::MotionPlanRequest& re
   return req.group_name == getGroupName();
 }
 
+
 bool PCEPlanner::getStartAndGoal(Eigen::VectorXd& start, Eigen::VectorXd& goal)
 {
+  std::string group = getGroupName();
+
+  if (!robot_model_)
+  {
+    RCLCPP_ERROR(getLogger(), "DEBUG: robot_model_ is NULL!");
+    return false;
+  }
+
   const moveit::core::JointModelGroup* jmg = 
-      robot_model_->getJointModelGroup(getGroupName());
+      robot_model_->getJointModelGroup(group);
   
   if (!jmg)
   {
-    RCLCPP_ERROR(getLogger(), "Joint model group '%s' not found", getGroupName().c_str());
+    RCLCPP_ERROR(getLogger(), "DEBUG: JointModelGroup is NULL for '%s'!", group.c_str());
     return false;
   }
   
   // Get start state
   moveit::core::RobotState start_state(robot_model_);
-  moveit::core::robotStateMsgToRobotState(request_.start_state, start_state);
   
+  try
+  {
+    moveit::core::robotStateMsgToRobotState(request_.start_state, start_state);
+  }
+  catch (const std::exception& e)
+  {
+    RCLCPP_ERROR(getLogger(), "DEBUG: Exception in robotStateMsgToRobotState: %s", e.what());
+    return false;
+  }
   std::vector<double> start_positions;
   start_state.copyJointGroupPositions(jmg, start_positions);
   
   start = Eigen::Map<Eigen::VectorXd>(start_positions.data(), start_positions.size());
   
-  // Get goal state (simplified - assumes joint space goal)
-  const auto& goal_constraints = request_.goal_constraints;
-  if (!goal_constraints.empty() && !goal_constraints[0].joint_constraints.empty())
+  if (!request_.goal_constraints.empty())
   {
-    goal.resize(start.size());
     goal.setZero();
-    
-    for (const auto& jc : goal_constraints[0].joint_constraints)
+
+    if (!request_.goal_constraints[0].joint_constraints.empty())
     {
-      int idx = jmg->getVariableGroupIndex(jc.joint_name);
-      if (idx >= 0 && idx < goal.size())
+      goal.resize(start.size());
+      
+      for (size_t i = 0; i < request_.goal_constraints[0].joint_constraints.size(); ++i)
       {
-        goal[idx] = jc.position;
+        const auto& jc = request_.goal_constraints[0].joint_constraints[i];
+        int idx = jmg->getVariableGroupIndex(jc.joint_name);
+        
+        if (idx >= 0 && idx < goal.size())
+        {
+          goal[idx] = jc.position;
+        }
+        else
+        {
+          RCLCPP_WARN(getLogger(), "DEBUG: Index %zu out of bounds (size=%ld)", idx, goal.size());
+        }
       }
+      return true;
     }
-    return true;
   }
   
   RCLCPP_ERROR(getLogger(), "No valid goal constraints found");

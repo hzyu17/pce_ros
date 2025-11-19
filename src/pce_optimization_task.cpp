@@ -2,6 +2,7 @@
 #include <cmath>
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <moveit_msgs/msg/collision_object.hpp>
+#include <omp.h>
 
 namespace pce_ros
 {
@@ -30,11 +31,26 @@ PCEOptimizationTask::PCEOptimizationTask(
   sphere_overlap_ratio_ = getParam<double>(node, base_param + "sphere_overlap_ratio", 0.5);
   if (sphere_overlap_ratio_ < 0.0) sphere_overlap_ratio_ = 0.0;
   if (sphere_overlap_ratio_ >= 1.0) sphere_overlap_ratio_ = 1.0;
+
+  // OPTIMIZATION: Set OpenMP threads (use all available cores)
+  /*
+  int num_threads = omp_get_max_threads();
+  omp_set_num_threads(num_threads);
+  ROS_INFO("PCE will use %d OpenMP threads for parallel collision checking", num_threads);
+  */
+
+  RCLCPP_INFO(getLogger(), "OpenMP disabled for testing");
+  
+}
+
+PCEOptimizationTask::~PCEOptimizationTask()
+{
 }
 
 void PCEOptimizationTask::setPlanningScene(
     const planning_scene::PlanningSceneConstPtr& scene)
 {
+  
   if (!scene)
   {
     RCLCPP_ERROR(getLogger(), "Planning scene is NULL!");
@@ -47,6 +63,7 @@ void PCEOptimizationTask::setPlanningScene(
   // Create distance field using CHOMP's approach
   createDistanceFieldFromPlanningScene();
 }
+
 
 void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
 {  
@@ -64,7 +81,8 @@ void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
       size_x, size_y, size_z,
       resolution,
       origin_x, origin_y, origin_z,
-      max_distance
+      max_distance,
+      true  // propagate - this is critical!
   );
     
   addCollisionObjectsToDistanceField();
@@ -75,7 +93,8 @@ void PCEOptimizationTask::createDistanceFieldFromPlanningScene()
 
 
 void PCEOptimizationTask::addCollisionObjectsToDistanceField()
-{
+{  
+  
   if (!distance_field_ || !planning_scene_)
   {
     RCLCPP_ERROR(getLogger(), "Distance field or planning scene is NULL!");
@@ -83,7 +102,6 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
   }
   
   const collision_detection::WorldConstPtr& world = planning_scene_->getWorld();
-  
   if (!world)
   {
     RCLCPP_WARN(getLogger(), "World is NULL!");
@@ -93,16 +111,26 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
   std::vector<std::string> object_ids = world->getObjectIds();
   RCLCPP_INFO(getLogger(), "Adding %zu collision objects to distance field:", object_ids.size());
   
+  if (object_ids.empty())
+  {
+    RCLCPP_WARN(getLogger(), "No collision objects in world!");
+    return;
+  }
+  
+  // Cache resolution
+  double resolution = distance_field_->getResolution();
+  
+  // CRITICAL FIX: Use std::vector (default allocator) to avoid alignment issues
+  std::vector<Eigen::Vector3d> all_points;
+  all_points.reserve(10000);
+  
   int total_points = 0;
   
   for (const auto& id : object_ids)
   {
+    
     collision_detection::World::ObjectConstPtr obj = world->getObject(id);
-    if (!obj)
-    {
-      RCLCPP_WARN(getLogger(), "  Object '%s' is NULL!", id.c_str());
-      continue;
-    }
+    if (!obj) continue;
         
     // Try to get object pose from collision object message
     // We need to query the planning scene for the collision object message
@@ -110,52 +138,59 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
     planning_scene_->getCollisionObjectMsgs(collision_objects);
     
     Eigen::Isometry3d object_pose = Eigen::Isometry3d::Identity();
-    bool found_object_pose = false;
-    
     for (const auto& co_msg : collision_objects)
     {
       if (co_msg.id == id)
       {
-        // Found the message - get the object-level pose
         tf2::fromMsg(co_msg.pose, object_pose);
-        found_object_pose = true;
         break;
       }
     }
     
-    if (!found_object_pose)
-    {
-      RCLCPP_WARN(getLogger(), "    Could not find collision object message for '%s', using identity", id.c_str());
-    }
-    
-    // Process shapes
     for (size_t i = 0; i < obj->shapes_.size(); ++i)
     {
       const shapes::ShapeConstPtr& shape = obj->shapes_[i];
+      if (!shape) continue;
+      
       const Eigen::Isometry3d& shape_pose_relative = obj->shape_poses_[i];
-      
-      // COMPOSE: world_pose = object_pose * shape_pose_relative
       Eigen::Isometry3d shape_pose_world = object_pose * shape_pose_relative;
-      
-      RCLCPP_INFO(getLogger(), "    Shape %zu world pose:", i);
-      RCLCPP_INFO(getLogger(), "      Position: [%.3f, %.3f, %.3f]",
-               shape_pose_world.translation().x(),
-               shape_pose_world.translation().y(),
-               shape_pose_world.translation().z());
-      
-      EigenSTL::vector_Vector3d points;
-      samplePointsFromShape(shape, shape_pose_world, distance_field_->getResolution(), points);
-      
-      if (!points.empty())
+            
+      // Call helper that uses std::vector instead of EigenSTL
+      std::vector<Eigen::Vector3d> shape_points;
+      samplePointsFromShape(shape, shape_pose_world, resolution, shape_points);
+            
+      if (!shape_points.empty())
       {
-        distance_field_->addPointsToField(points);
-        total_points += points.size();
-        RCLCPP_INFO(getLogger(), "    Added %zu points", points.size());
+        all_points.insert(all_points.end(), 
+                         shape_points.begin(), 
+                         shape_points.end());
+        total_points += shape_points.size();
       }
+
+    }
+    
+  }
+    
+  if (!all_points.empty())
+  {    
+    // Convert ONLY at the end for the API call
+    EigenSTL::vector_Vector3d df_points;
+    df_points.reserve(all_points.size());
+    
+    for (const auto& pt : all_points)
+    {
+      df_points.push_back(pt);
+    }
+        
+    try
+    {
+      distance_field_->addPointsToField(df_points);
+    }
+    catch (const std::exception& e)
+    {
+      RCLCPP_ERROR(getLogger(), "Exception: %s", e.what());
     }
   }
-  
-  RCLCPP_INFO(getLogger(), "Distance field populated with %d total points", total_points);
   
 }
 
@@ -164,7 +199,7 @@ void PCEOptimizationTask::samplePointsFromShape(
     const shapes::ShapeConstPtr& shape,
     const Eigen::Isometry3d& pose,
     double resolution,
-    EigenSTL::vector_Vector3d& points)
+    std::vector<Eigen::Vector3d>& points)
 {
   points.clear();
   
@@ -321,9 +356,8 @@ bool PCEOptimizationTask::setMotionPlanRequest(
     const moveit_msgs::msg::MotionPlanRequest& req,
     moveit_msgs::msg::MoveItErrorCodes& error_code)
 {
-  plan_request_ = req;
   
-  setPlanningScene(planning_scene);
+  plan_request_ = req;
   
   return true;
 }
@@ -339,170 +373,223 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
   
   if (!jmg)
   {
-    RCLCPP_ERROR_ONCE(getLogger(), "Joint model group '%s' not found!", group_name_.c_str());
+    RCLCPP_ERROR_ONCE(getLogger(), "DEBUG: Joint model group '%s' not found!", group_name_.c_str());
     return sphere_locations;
   }
-  
+    
   const std::vector<const moveit::core::LinkModel*>& links = jmg->getLinkModels();
   
-  RCLCPP_INFO_ONCE(getLogger(), "Group '%s' has %zu links", group_name_.c_str(), links.size());
+  sphere_locations.reserve(links.size() * 10);
   
-  for (const auto* link : links)
+  for (size_t link_idx = 0; link_idx < links.size(); ++link_idx)
   {
-    const Eigen::Isometry3d& link_transform = state.getGlobalLinkTransform(link);
+    const auto* link = links[link_idx];
     
-    // Get collision shapes for this link
-    const std::vector<shapes::ShapeConstPtr>& shapes = link->getShapes();
+    if (!link)
+    {
+      RCLCPP_ERROR(getLogger(), "DEBUG: Link is NULL, skipping");
+      continue;
+    }
+    
+    const Eigen::Isometry3d& link_transform = state.getGlobalLinkTransform(link);
+    const std::vector<shapes::ShapeConstPtr>& shapes = link->getShapes();    
     const EigenSTL::vector_Isometry3d& shape_poses = link->getCollisionOriginTransforms();
     
-    RCLCPP_INFO_ONCE(getLogger(), "  Link '%s' has %zu shapes", link->getName().c_str(), shapes.size());
+    if (shapes.size() != shape_poses.size())
+    {
+      sphere_locations.push_back(link_transform.translation());
+      continue;
+    }
     
     if (shapes.empty())
     {
-      // No shapes - add link origin as fallback
+      RCLCPP_WARN_ONCE(getLogger(), "No shapes for link '%s', using origin", link->getName().c_str());
       sphere_locations.push_back(link_transform.translation());
-      RCLCPP_INFO_ONCE(getLogger(), "    Added link origin as fallback");
       continue;
     }
     
     for (size_t s = 0; s < shapes.size(); ++s)
-    {
+    { 
       const shapes::ShapeConstPtr& shape = shapes[s];
+      
+      if (!shape)
+      {
+        RCLCPP_ERROR(getLogger(), "DEBUG: Shape %zu is NULL for link '%s'", s, link->getName().c_str());
+        continue;
+      }
+
       Eigen::Isometry3d shape_transform = link_transform * shape_poses[s];
       
-      RCLCPP_INFO_ONCE(getLogger(), "    Shape %zu type: %d", s, static_cast<int>(shape->type));
-      
-      // Sample points based on shape type
       if (shape->type == shapes::CYLINDER)
       {
         const shapes::Cylinder* cylinder =
             static_cast<const shapes::Cylinder*>(shape.get());
-        double radius = cylinder->radius;
-        double length = cylinder->length;
         
-        // Sample points along cylinder axis
-        int num_samples = std::max(3, static_cast<int>(length / 0.05));
+        if (!cylinder || cylinder->length <= 0.0)
+        {
+          RCLCPP_ERROR(getLogger(), "DEBUG: Invalid cylinder");
+          sphere_locations.push_back(shape_transform.translation());
+          continue;
+        }
+        
+        double length = cylinder->length;
+        int num_samples = 3;
+        
         for (int i = 0; i < num_samples; ++i)
         {
-          double t = static_cast<double>(i) / (num_samples - 1);
+          double t = (num_samples > 1) ? static_cast<double>(i) / (num_samples - 1) : 0.5;
           double z = -length/2 + t * length;
           Eigen::Vector3d local_point(0, 0, z);
-          Eigen::Vector3d world_point = shape_transform * local_point;
-          sphere_locations.push_back(world_point);
+          sphere_locations.push_back(shape_transform * local_point);
         }
-        RCLCPP_INFO_ONCE(getLogger(), "      Added %d cylinder samples", num_samples);
       }
       else if (shape->type == shapes::SPHERE)
       {
-        const shapes::Sphere* sphere =
-            static_cast<const shapes::Sphere*>(shape.get());
-        Eigen::Vector3d center = shape_transform.translation();
-        sphere_locations.push_back(center);
-        RCLCPP_INFO_ONCE(getLogger(), "      Added sphere center");
+        sphere_locations.push_back(shape_transform.translation());
       }
       else if (shape->type == shapes::BOX)
       {
         const shapes::Box* box = static_cast<const shapes::Box*>(shape.get());
         
-        // Sample corners and center
+        if (!box || box->size[0] <= 0.0 || box->size[1] <= 0.0 || box->size[2] <= 0.0)
+        {
+          RCLCPP_ERROR(getLogger(), "DEBUG: Invalid box");
+          sphere_locations.push_back(shape_transform.translation());
+          continue;
+        }
+        
         double dx = box->size[0] / 2;
         double dy = box->size[1] / 2;
         double dz = box->size[2] / 2;
         
         std::vector<Eigen::Vector3d> local_points = {
-          Eigen::Vector3d(0, 0, 0), // Center
-          Eigen::Vector3d(dx, dy, dz),
-          Eigen::Vector3d(dx, dy, -dz),
-          Eigen::Vector3d(dx, -dy, dz),
-          Eigen::Vector3d(dx, -dy, -dz),
-          Eigen::Vector3d(-dx, dy, dz),
-          Eigen::Vector3d(-dx, dy, -dz),
-          Eigen::Vector3d(-dx, -dy, dz),
-          Eigen::Vector3d(-dx, -dy, -dz)
+          Eigen::Vector3d(0, 0, 0),
+          Eigen::Vector3d(dx, 0, 0),
+          Eigen::Vector3d(-dx, 0, 0),
+          Eigen::Vector3d(0, dy, 0),
+          Eigen::Vector3d(0, 0, dz),
         };
         
         for (const auto& local_pt : local_points)
         {
-          Eigen::Vector3d world_pt = shape_transform * local_pt;
-          sphere_locations.push_back(world_pt);
+          sphere_locations.push_back(shape_transform * local_pt);
         }
-        RCLCPP_INFO_ONCE(getLogger(), "      Added %zu box samples", local_points.size());
       }
       else if (shape->type == shapes::MESH)
       {
         const shapes::Mesh* mesh = static_cast<const shapes::Mesh*>(shape.get());
         
-        // Get mesh bounding box
+        if (!mesh || mesh->vertex_count == 0 || !mesh->vertices)
+        {
+          sphere_locations.push_back(shape_transform.translation());
+          continue;
+        }
+        
+        if (mesh->vertex_count > 100000)
+        {
+          sphere_locations.push_back(shape_transform.translation());
+          continue;
+        }
+        
+        // Compute bounding box
         double x_min = 1e9, x_max = -1e9;
         double y_min = 1e9, y_max = -1e9;
         double z_min = 1e9, z_max = -1e9;
+        bool valid = false;
         
         for (unsigned int i = 0; i < mesh->vertex_count; ++i)
-        {
-          x_min = std::min(x_min, (double)mesh->vertices[3*i + 0]);
-          x_max = std::max(x_max, (double)mesh->vertices[3*i + 0]);
-          y_min = std::min(y_min, (double)mesh->vertices[3*i + 1]);
-          y_max = std::max(y_max, (double)mesh->vertices[3*i + 1]);
-          z_min = std::min(z_min, (double)mesh->vertices[3*i + 2]);
-          z_max = std::max(z_max, (double)mesh->vertices[3*i + 2]);
+        {          
+          unsigned int idx = 3 * i;
+          if (idx + 2 >= mesh->vertex_count * 3)
+          {
+            break;
+          }
+          
+          double vx = mesh->vertices[idx + 0];
+          double vy = mesh->vertices[idx + 1];
+          double vz = mesh->vertices[idx + 2];
+          
+          if (!std::isfinite(vx) || !std::isfinite(vy) || !std::isfinite(vz))
+          {
+            continue;
+          }
+          
+          x_min = std::min(x_min, vx);
+          x_max = std::max(x_max, vx);
+          y_min = std::min(y_min, vy);
+          y_max = std::max(y_max, vy);
+          z_min = std::min(z_min, vz);
+          z_max = std::max(z_max, vz);
+          valid = true;
         }
         
+        if (!valid)
+        {
+          sphere_locations.push_back(shape_transform.translation());
+          continue;
+        }
+        
+        // Sample points throughout the bounding box
         double size_x = x_max - x_min;
         double size_y = y_max - y_min;
         double size_z = z_max - z_min;
         
-        // Sampling parameters
-        double sphere_radius = collision_clearance_;
-        double overlap_ratio = sphere_overlap_ratio_;
-        double sphere_spacing = 2.0 * sphere_radius * (1.0 - overlap_ratio);
+        // Determine sampling based on sphere overlap ratio
+        double spacing = collision_clearance_ * (1.0 - sphere_overlap_ratio_);
+        spacing = std::max(spacing, 0.03); // Minimum spacing
         
-        // Calculate samples needed based on bounding box
-        int nx = std::max(2, static_cast<int>(std::ceil(size_x / sphere_spacing)) + 1);
-        int ny = std::max(2, static_cast<int>(std::ceil(size_y / sphere_spacing)) + 1);
-        int nz = std::max(2, static_cast<int>(std::ceil(size_z / sphere_spacing)) + 1);
+        int nx = std::max(1, std::min(4, (int)std::ceil(size_x / spacing)));
+        int ny = std::max(1, std::min(4, (int)std::ceil(size_y / spacing)));
+        int nz = std::max(1, std::min(4, (int)std::ceil(size_z / spacing)));
         
-        RCLCPP_INFO_ONCE(getLogger(), "      Mesh bounds: [%.3f,%.3f] x [%.3f,%.3f] x [%.3f,%.3f]",
-                    x_min, x_max, y_min, y_max, z_min, z_max);
-        RCLCPP_INFO_ONCE(getLogger(), "      Mesh size: %.3f x %.3f x %.3f, needs %dx%dx%d grid (spacing: %.3fm)",
-                    size_x, size_y, size_z, nx, ny, nz, sphere_spacing);
+        // Limit total points
+        int max_points = 20;
+        if (nx * ny * nz > max_points)
+        {
+          double scale = std::pow(max_points / (double)(nx * ny * nz), 1.0/3.0);
+          nx = std::max(2, (int)(nx * scale));
+          ny = std::max(2, (int)(ny * scale));
+          nz = std::max(2, (int)(nz * scale));
+        }
         
-        // Sample on grid through bounding box
+        // Sample grid throughout bounding box
         for (int ix = 0; ix < nx; ++ix)
         {
           for (int iy = 0; iy < ny; ++iy)
           {
             for (int iz = 0; iz < nz; ++iz)
             {
-              double x = (nx == 1) ? (x_min + x_max)/2 : x_min + (size_x * ix) / (nx - 1);
-              double y = (ny == 1) ? (y_min + y_max)/2 : y_min + (size_y * iy) / (ny - 1);
-              double z = (nz == 1) ? (z_min + z_max)/2 : z_min + (size_z * iz) / (nz - 1);
+              double tx = (nx > 1) ? (double)ix / (nx - 1) : 0.5;
+              double ty = (ny > 1) ? (double)iy / (ny - 1) : 0.5;
+              double tz = (nz > 1) ? (double)iz / (nz - 1) : 0.5;
               
-              Eigen::Vector3d local_pt(x, y, z);
-              sphere_locations.push_back(shape_transform * local_pt);
+              Eigen::Vector3d local_point(
+                x_min + tx * size_x,
+                y_min + ty * size_y,
+                z_min + tz * size_z
+              );
+              
+              sphere_locations.push_back(shape_transform * local_point);
             }
           }
         }
-        
-        RCLCPP_INFO_ONCE(getLogger(), "      Added %d mesh samples (%dx%dx%d)", nx*ny*nz, nx, ny, nz);
       }
       else
       {
-        // Unknown shape - add origin
+        RCLCPP_ERROR(getLogger(), "DEBUG: Unknown shape type %d", (int)shape->type);
         sphere_locations.push_back(shape_transform.translation());
-        RCLCPP_INFO_ONCE(getLogger(), "      Added origin for unknown shape type %d", static_cast<int>(shape->type));
       }
     }
+    
   }
-  
-  RCLCPP_INFO_ONCE(getLogger(), "Generated %zu total sphere locations", sphere_locations.size());
-  
+    
   return sphere_locations;
 }
 
 
 float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajectory) const
 {
-  if (!planning_scene_)  // NEW - using planning_scene_
+  if (!planning_scene_) 
   {
     RCLCPP_ERROR(getLogger(), "No planning scene set!");
     return std::numeric_limits<float>::infinity();
@@ -542,78 +629,99 @@ float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajecto
 
 float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) const
 {
-  RCLCPP_INFO_ONCE(getLogger(), "=== computeCollisionCost CALLED ===");
-  
   if (!distance_field_)
   {
-    RCLCPP_WARN_THROTTLE(getLogger(), *node_->get_clock(), 1000, "Distance field not available in computeCollisionCost!");
+    RCLCPP_WARN_THROTTLE(getLogger(), *node_->get_clock(), 1000, "Distance field not available!");
     return 0.0f;
   }
-  
-  RCLCPP_INFO_ONCE(getLogger(), "Distance field is available, computing collision cost...");
-  
-  float sum_squared_costs = 0.0f;
-  int collision_count = 0;
-  int near_collision_count = 0;
 
 
-  cached_sphere_locations_.clear();
-  cached_sphere_locations_.resize(trajectory.nodes.size());
-  
-  for (size_t i = 0; i < trajectory.nodes.size(); ++i)
+  // Set OpenMP threads ONLY when actually using parallel code
+  static bool omp_initialized = false;
+  if (!omp_initialized)
   {
+    int num_threads = omp_get_max_threads();
+    omp_set_num_threads(num_threads);
+    RCLCPP_INFO(getLogger(), "OpenMP initialized with %d threads for collision checking", num_threads);
+    omp_initialized = true;
+  }
+  
+  const size_t num_waypoints = trajectory.nodes.size();
+  
+  // Resize OUTSIDE parallel region (not thread-safe operation)
+  cached_sphere_locations_.resize(num_waypoints);
+  
+  const float MAX_ACCEPTABLE_COST = 5000.0f;
+  
+  // Use atomic for early termination flag
+  std::atomic<bool> exceeded_threshold{false};
+  
+  // Use reduction for sum (OpenMP handles synchronization)
+  float sum_squared_costs = 0.0f;
+  
+  // Use proper OpenMP reduction pattern
+  // OPTIMIZATION: Use guided scheduling for better load balancing
+  #pragma omp parallel for reduction(+:sum_squared_costs) schedule(guided, 2)
+  for (size_t i = 0; i < num_waypoints; ++i)
+  {
+    if (exceeded_threshold.load(std::memory_order_relaxed))
+    {
+      continue;
+    }
+    
+    // Thread-local RobotState
     moveit::core::RobotState state(robot_model_ptr_);
     if (!trajectoryToRobotState(trajectory, i, state))
     {
-      return std::numeric_limits<float>::infinity();
+      continue;
     }
     
-    // Get sphere locations on robot
+    // Get sphere locations
     std::vector<Eigen::Vector3d> sphere_locations = getSphereLocations(state);
-    cached_sphere_locations_[i] = sphere_locations;
     
-    if (i == 0)
+    // OPTIMIZATION: Early exit if too many spheres (something wrong)
+    if (sphere_locations.size() > 200)
     {
-      RCLCPP_INFO_ONCE(getLogger(), "Waypoint 0 has %zu sphere locations", sphere_locations.size());
-      if (!sphere_locations.empty())
-      {
-        RCLCPP_INFO_ONCE(getLogger(), "  First sphere at [%.3f, %.3f, %.3f]",
-                     sphere_locations[0].x(),
-                     sphere_locations[0].y(),
-                     sphere_locations[0].z());
-      }
+      RCLCPP_WARN_THROTTLE(getLogger(), *node_->get_clock(), 5000, "Too many collision spheres (%zu), limiting to 200", 
+                        sphere_locations.size());
+      sphere_locations.resize(200);
     }
     
-    for (const Eigen::Vector3d& point : sphere_locations)
+    cached_sphere_locations_[i] = std::move(sphere_locations);
+    
+    // Compute cost for this waypoint
+    float waypoint_cost = 0.0f;
+    
+    for (const Eigen::Vector3d& point : cached_sphere_locations_[i])
     {
-      // Query signed distance from distance field
       double distance = getDistanceAtPoint(point);
       
-      // Apply CHOMP cost function
-      float point_cost = getObstacleCost(distance);
-      
-      if (point_cost > 0.0f)
+      // OPTIMIZATION: Skip if very far from obstacles
+      if (distance > collision_threshold_)
       {
-        if (distance < 0.0)
-        {
-          collision_count++;
-        }
-        else
-        {
-          near_collision_count++;
-        }
+        continue;
       }
       
-      sum_squared_costs += point_cost * point_cost;
+      float point_cost = getObstacleCost(distance);
+      waypoint_cost += point_cost * point_cost;
+    }
+    
+    sum_squared_costs += waypoint_cost;
+    
+    // Early termination check
+    if (waypoint_cost * sigma_obs_ > MAX_ACCEPTABLE_COST / num_waypoints)
+    {
+      exceeded_threshold.store(true, std::memory_order_relaxed);
     }
   }
-
+  
+  // Early termination check
+  if (exceeded_threshold.load())
+  {
+    return MAX_ACCEPTABLE_COST;
+  }
+  
   float total_cost = sum_squared_costs * sigma_obs_;
-  
-  RCLCPP_INFO_ONCE(getLogger(), "computeCollisionCost returning: %.4f (sum_squared: %.4f, sigma_obs: %.3f)", 
-                total_cost, sum_squared_costs, sigma_obs_);
-
-  
   return total_cost;
 }
 
@@ -687,7 +795,8 @@ bool PCEOptimizationTask::filterTrajectory(Trajectory& trajectory, int iteration
 void PCEOptimizationTask::postIteration(int iteration_number, float cost, 
                                         const Trajectory& trajectory)
 {
-  RCLCPP_INFO(getLogger(), "PCE Iteration %d: cost = %.4f", iteration_number, cost);  // This should print
+  // Use throttled logging to reduce overhead
+  RCLCPP_INFO_THROTTLE(getLogger(), *node_->get_clock(), 1000, "PCE Iteration %d: cost = %.4f", iteration_number, cost);
   
   // Check if visualizer exists
   if (!visualizer_)
@@ -732,6 +841,9 @@ void PCEOptimizationTask::initialize(size_t num_dimensions, const PathNode& star
                                      const PathNode& goal, size_t num_nodes,
                                      float total_time)
 {
+  // Clear cached data
+  cached_sphere_locations_.clear();
+
   RCLCPP_DEBUG(getLogger(), "PCE task initialized: %zu dimensions, %zu nodes", 
             num_dimensions, num_nodes);
 }
@@ -753,13 +865,13 @@ bool PCEOptimizationTask::trajectoryToRobotState(
   
   if (variable_names.size() != static_cast<size_t>(positions_float.size()))
   {
-    RCLCPP_ERROR(getLogger(), "Dimension mismatch: trajectory has %zu DOFs, group has %zu variables",
-              positions_float.size(), variable_names.size());
     return false;
   }
   
-  // Convert Eigen::VectorXf to std::vector<double> explicitly
-  std::vector<double> positions(positions_float.size());
+  // OPTIMIZATION: Static vector to avoid repeated allocations
+  static thread_local std::vector<double> positions;
+  positions.resize(positions_float.size());
+  
   for (Eigen::Index i = 0; i < positions_float.size(); ++i)
   {
     positions[i] = static_cast<double>(positions_float[i]);

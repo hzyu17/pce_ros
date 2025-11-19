@@ -60,7 +60,7 @@ public:
       const PCEConfig& config,
       const rclcpp::Node::SharedPtr& node);
 
-  virtual ~PCEOptimizationTask() = default;
+  virtual ~PCEOptimizationTask();
 
 
   void setVisualizer(std::shared_ptr<PCEVisualization> viz)
@@ -156,7 +156,7 @@ protected:
       const shapes::ShapeConstPtr& shape,
       const Eigen::Isometry3d& pose,
       double resolution,
-      EigenSTL::vector_Vector3d& points);
+      std::vector<Eigen::Vector3d>& points);
   
   // Get signed distance at a point
   double getDistanceAtPoint(const Eigen::Vector3d& point) const;
