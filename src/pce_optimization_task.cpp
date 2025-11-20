@@ -29,18 +29,9 @@ PCEOptimizationTask::PCEOptimizationTask(
   collision_threshold_ = getParam<double>(node, base_param + "collision_threshold", 0.07);
   sigma_obs_ = getParam<double>(node, base_param + "sigma_obs", 1.0);
   sphere_overlap_ratio_ = getParam<double>(node, base_param + "sphere_overlap_ratio", 0.5);
+
   if (sphere_overlap_ratio_ < 0.0) sphere_overlap_ratio_ = 0.0;
-  if (sphere_overlap_ratio_ >= 1.0) sphere_overlap_ratio_ = 1.0;
-
-  // OPTIMIZATION: Set OpenMP threads (use all available cores)
-  /*
-  int num_threads = omp_get_max_threads();
-  omp_set_num_threads(num_threads);
-  ROS_INFO("PCE will use %d OpenMP threads for parallel collision checking", num_threads);
-  */
-
-  RCLCPP_INFO(getLogger(), "OpenMP disabled for testing");
-  
+  if (sphere_overlap_ratio_ >= 1.0) sphere_overlap_ratio_ = 1.0;  
 }
 
 PCEOptimizationTask::~PCEOptimizationTask()
@@ -131,9 +122,7 @@ void PCEOptimizationTask::addCollisionObjectsToDistanceField()
     
     collision_detection::World::ObjectConstPtr obj = world->getObject(id);
     if (!obj) continue;
-        
-    // Try to get object pose from collision object message
-    // We need to query the planning scene for the collision object message
+
     std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
     planning_scene_->getCollisionObjectMsgs(collision_objects);
     
@@ -409,7 +398,7 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
     }
     
     for (size_t s = 0; s < shapes.size(); ++s)
-    { 
+    {
       const shapes::ShapeConstPtr& shape = shapes[s];
       
       if (!shape)
@@ -714,7 +703,7 @@ float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) co
       exceeded_threshold.store(true, std::memory_order_relaxed);
     }
   }
-  
+
   // Early termination check
   if (exceeded_threshold.load())
   {
@@ -737,7 +726,7 @@ bool PCEOptimizationTask::filterTrajectory(Trajectory& trajectory, int iteration
     return false;
   }
   
-  // Get the active joint models - THIS LINE WAS MISSING
+  // Get the active joint models
   const std::vector<const moveit::core::JointModel*>& joint_models = 
       joint_model_group->getActiveJointModels();
   
@@ -882,6 +871,31 @@ bool PCEOptimizationTask::trajectoryToRobotState(
   state.update();
   
   return true;
+}
+
+std::vector<float> PCEOptimizationTask::computeCollisionCost(
+    const std::vector<Trajectory>& trajectories) const 
+{    
+    std::vector<float> costs;
+        
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    costs.resize(trajectories.size());
+    
+    // SEQUENTIAL (no OpenMP)
+    for (size_t i = 0; i < trajectories.size(); ++i)
+    {
+        costs[i] = computeCollisionCost(trajectories[i]);
+    }
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    
+    RCLCPP_INFO_THROTTLE(getLogger(), *node_->get_clock(), 5000, "CPU: %zu samples in %ld ms (%.1f samples/sec)",
+                     trajectories.size(), duration.count(),
+                     trajectories.size() / (duration.count() / 1000.0));
+    
+    return costs;
 }
 
 } // namespace pce_ros

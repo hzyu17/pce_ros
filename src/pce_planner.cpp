@@ -19,11 +19,11 @@ PCEPlanner::PCEPlanner(
     const moveit::core::RobotModelConstPtr& model,
     std::shared_ptr<PCEVisualization> visualizer)
   : planning_interface::PlanningContext("PCE", group)
-  , robot_model_(model)
   , group_name_(group)
   , pce_config_(config)
-  , visualizer_(visualizer)
   , node_(node)
+  , robot_model_(model)
+  , visualizer_(visualizer)
 {
   setup();  // All logging happens in setup()
 }
@@ -50,7 +50,6 @@ void PCEPlanner::setup()
   if (visualizer_)
   {
     pce_task_->setVisualizer(visualizer_);
-    RCLCPP_INFO(getLogger(), "  Visualizer connected to optimization task");
   }
   else
     RCLCPP_WARN(getLogger(), "  No visualizer available for PCEOptimizationTask");
@@ -210,8 +209,11 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   RCLCPP_INFO(getLogger(), "Initial trajectory collision cost: %.4f", initial_cost);
   
   // Visualize the collision spheres
-  if (visualizer_)
-  {
+  if (!visualizer_) {
+    RCLCPP_WARN(getLogger(), "Visualizer is NULL - markers will not be published!");
+  } else {
+    RCLCPP_INFO(getLogger(), "Visualizer is active, publishing markers...");
+
     visualizer_->visualizeCollisionSpheres(
         initial_traj,
         pce_task_->getCachedSphereLocations(),
@@ -255,11 +257,10 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   RCLCPP_INFO(getLogger(), "Starting optimization...");
   RCLCPP_INFO(getLogger(), "========================================================\n");
   
-  RCLCPP_INFO(getLogger(), "Calling pce_planner_->solve()...");
-  // Now solve (no parameters needed - everything was set in initialize)
+  // Run optimization
   if (!pce_planner_->solve())
   {
-    RCLCPP_ERROR(getLogger(), "PCE optimization failed to find valid solution");
+    RCLCPP_ERROR(getLogger(), "PCE optimization failed");
     res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
     return;
   }
@@ -279,26 +280,10 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
     res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::FAILURE;
     return;
   }
-  
   RCLCPP_INFO(getLogger(), "Converted to JointTrajectory with %zu points", joint_traj.points.size());
-    
-  try
-  {
-    if (!res.trajectory)
-      res.trajectory = std::make_shared<robot_trajectory::RobotTrajectory>(robot_model_, getGroupName());
-
-    moveit::core::RobotState start_state(robot_model_);
-    moveit::core::robotStateMsgToRobotState(request_.start_state, start_state);
-    res.trajectory->setRobotTrajectoryMsg(start_state, joint_traj);
-    
-    RCLCPP_INFO(getLogger(), "Trajectory message set successfully");
-  }
-  catch (const std::exception& e)
-  {
-    RCLCPP_ERROR(getLogger(), "Exception while setting trajectory: %s", e.what());
-    res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::FAILURE;
-    return;
-  }
+  
+  res.trajectory = std::make_shared<robot_trajectory::RobotTrajectory>(robot_model_, getGroupName());
+  res.trajectory->setRobotTrajectoryMsg(getPlanningScene()->getCurrentState(), joint_traj);
   
   res.planning_time = (node_->now() - start_time).seconds();
   res.error_code.val = moveit_msgs::msg::MoveItErrorCodes::SUCCESS;
@@ -387,9 +372,9 @@ bool PCEPlanner::getStartAndGoal(Eigen::VectorXd& start, Eigen::VectorXd& goal)
       for (size_t i = 0; i < request_.goal_constraints[0].joint_constraints.size(); ++i)
       {
         const auto& jc = request_.goal_constraints[0].joint_constraints[i];
-        int idx = jmg->getVariableGroupIndex(jc.joint_name);
+        auto idx = jmg->getVariableGroupIndex(jc.joint_name);
         
-        if (idx >= 0 && idx < goal.size())
+        if (idx < goal.size())
         {
           goal[idx] = jc.position;
         }
@@ -472,11 +457,6 @@ bool PCEPlanner::getConfigData(const rclcpp::Node::SharedPtr& node,
     group_config.num_discretization = getParam<int>(node, group_param + ".num_discretization", 20);
     group_config.total_time = getParam<double>(node, group_param + ".total_time", 5.0);
     group_config.node_collision_radius = getParam<double>(node, group_param + ".node_collision_radius", 0.1);
-
-    // task collision parameters
-    // TODO: Delete these since already read in PCEOptimizationTask
-    group_config.collision_clearance = getParam<double>(node, base + ".collision_clearance", 0.05);
-    group_config.collision_threshold = getParam<double>(node, base + ".collision_threshold", 0.07);
 
     // push into map
     config[group] = group_config;

@@ -132,8 +132,8 @@ protected:
   // Robot model from MoveIt2
   moveit::core::RobotModelConstPtr robot_model_;
 
-    // Planning scene for collision checking
-  planning_scene::PlanningSceneConstPtr planning_scene_;
+  // Planning scene for collision checking
+  // planning_scene::PlanningSceneConstPtr planning_scene_;
 
   // Visualizer for trajectory display
   std::shared_ptr<PCEVisualization> visualizer_;

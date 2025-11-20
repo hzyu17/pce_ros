@@ -48,5 +48,4 @@ protected:
   friend class PCEPlanner;
 };
 
-
 } // namespace pce_ros

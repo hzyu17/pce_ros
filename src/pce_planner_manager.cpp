@@ -36,7 +36,7 @@ bool PCEPlannerManager::initialize(const moveit::core::RobotModelConstPtr& model
 
   if (!PCEPlanner::getConfigData(node_, config_, "pce"))
   {
-    RCLCPP_ERROR(getLogger(), "PCEPlannerManager: Failed to load configuration data from parameter server");
+    RCLCPP_ERROR(getLogger(), "PCEPlannerManager: Failed to load configuration from parameter server");
     return false;
   }
   
@@ -95,28 +95,24 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
 
   try
   {
-    RCLCPP_INFO(getLogger(), "DEBUG: Creating PCEPlanner...");
     auto planner = std::make_shared<PCEPlanner>(
-      req.group_name, config_it->second, node_, robot_model_, visualizer_);
-    RCLCPP_INFO(getLogger(), "DEBUG: PCEPlanner created");
+      req.group_name,
+      config_it->second,
+      node_,
+      robot_model_,
+      visualizer_);
 
-    RCLCPP_INFO(getLogger(), "DEBUG: Checking canServiceRequest...");
     if (!planner->canServiceRequest(req))
     {
       RCLCPP_ERROR(getLogger(), "Cannot service request for group '%s'", req.group_name.c_str());
       error_code.val = moveit_msgs::msg::MoveItErrorCodes::PLANNING_FAILED;
       return planning_interface::PlanningContextPtr();
     }
-    RCLCPP_INFO(getLogger(), "DEBUG: canServiceRequest passed");
 
-    RCLCPP_INFO(getLogger(), "DEBUG: Calling setPlanningScene...");
     planner->setPlanningScene(planning_scene);
-    RCLCPP_INFO(getLogger(), "DEBUG: setPlanningScene returned");
     
-    RCLCPP_INFO(getLogger(), "DEBUG: Calling setMotionPlanRequest...");
     planner->setMotionPlanRequest(req);
-    RCLCPP_INFO(getLogger(), "DEBUG: setMotionPlanRequest returned");
-    RCLCPP_INFO(getLogger(), "DEBUG: About to return planner...");
+
     error_code.val = moveit_msgs::msg::MoveItErrorCodes::SUCCESS;
     return planner;
   }
@@ -127,7 +123,6 @@ planning_interface::PlanningContextPtr PCEPlannerManager::getPlanningContext(
     return planning_interface::PlanningContextPtr();
   }
 }
-
 
 bool PCEPlannerManager::canServiceRequest(const moveit_msgs::msg::MotionPlanRequest& req) const
 {
