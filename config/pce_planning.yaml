@@ -16,7 +16,7 @@ pce:
       num_discretization: 50
       total_time: 5.0
     collision_clearance: 0.05
-    collision_threshold: 0.05
+    collision_threshold: 0.01
     sigma_obs: 500.0
     sphere_overlap_ratio: 0.05
   
@@ -44,7 +44,7 @@ ngd:
   panda_arm:
     ngd_planner:
       num_samples: 3000
-      num_iterations: 20
+      num_iterations: 50
       learning_rate: 0.0001
       temperature: 1.5
       convergence_threshold: 0.001
@@ -52,8 +52,8 @@ ngd:
       total_time: 5.0
 
     collision_clearance: 0.05
-    collision_threshold: 0.05
-    sigma_obs: 500.0
+    collision_threshold: 0.01
+    sigma_obs: 100.0
     sphere_overlap_ratio: 0.05
   
   # Visualization settings for NGD
