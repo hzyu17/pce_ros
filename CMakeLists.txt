@@ -56,9 +56,9 @@ add_library(${PROJECT_NAME} SHARED
   src/pce_planner_manager.cpp
   src/visualizer.cpp
   
-  # # NGD planner (NEW - reuses shared infrastructure!)
-  # src/ngd_planner.cpp
-  # src/ngd_planner_manager.cpp
+  # NGD planner (NEW - reuses shared infrastructure!)
+  src/ngd_planner.cpp
+  src/ngd_planner_manager.cpp
 )
 
 ament_target_dependencies(${PROJECT_NAME}

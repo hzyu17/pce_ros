@@ -57,7 +57,6 @@ public:
   PCEOptimizationTask(
       const moveit::core::RobotModelConstPtr& robot_model_ptr,
       const std::string& group_name,
-      const PCEConfig& config,
       const rclcpp::Node::SharedPtr& node);
 
   virtual ~PCEOptimizationTask();
@@ -86,6 +85,12 @@ public:
 
   // Multiple trajectories (new overload) - returns vector of costs
   std::vector<float> computeCollisionCost(
+        const std::vector<Trajectory>& trajectories) const override;
+
+  // Collision cost computation based on simple collision checking query
+  float computeCollisionCostSimple(const Trajectory& trajectory) const override;
+
+  std::vector<float> computeCollisionCostSimple(
         const std::vector<Trajectory>& trajectories) const override;
 
   // // Compute batch collision costs for multiple trajectories on GPU
@@ -152,10 +157,6 @@ protected:
   std::vector<Eigen::Vector3d> getSphereLocations(const moveit::core::RobotState& state) const;
   
   float getObstacleCost(double distance) const;
-
-  // Collision cost computation based on simple collision checking query
-  float computeCollisionCostSimple(const Trajectory& trajectory) const;
-
 
   // Distance field setup (CHOMP approach)
   void createDistanceFieldFromPlanningScene();
