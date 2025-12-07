@@ -1,0 +1,5 @@
+source;share/pce_ros/local_setup.bash
+source;share/pce_ros/local_setup.dsv
+source;share/pce_ros/local_setup.ps1
+source;share/pce_ros/local_setup.sh
+source;share/pce_ros/local_setup.zsh

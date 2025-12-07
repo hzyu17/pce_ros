@@ -2,3 +2,5 @@
 **/venv/*
 **/third_party/*
 **/__pycache__/*
+**/build/*
+**/log/*
