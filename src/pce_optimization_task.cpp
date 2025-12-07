@@ -17,17 +17,16 @@ rclcpp::Logger getLogger()
 PCEOptimizationTask::PCEOptimizationTask(
     const moveit::core::RobotModelConstPtr& robot_model_ptr,
     const std::string& group_name,
-    const PCEConfig& config,
     const rclcpp::Node::SharedPtr& node)
   : robot_model_ptr_(robot_model_ptr)
   , group_name_(group_name)
   , node_(node)
 {
   // Load parameters from node
-  std::string base_param = "pce.pce." + group_name + ".pce_planner.";
+  std::string base_param = "pce.pce." + group_name + ".";
   collision_clearance_ = getParam<double>(node, base_param + "collision_clearance", 0.05);
   collision_threshold_ = getParam<double>(node, base_param + "collision_threshold", 0.07);
-  sigma_obs_ = getParam<double>(node, base_param + "sigma_obs", 1.0);
+  sigma_obs_ = getParam<double>(node, base_param + "sigma_obs", 500.0);
   sphere_overlap_ratio_ = getParam<double>(node, base_param + "sphere_overlap_ratio", 0.5);
 
   if (sphere_overlap_ratio_ < 0.0) sphere_overlap_ratio_ = 0.0;
@@ -886,6 +885,31 @@ std::vector<float> PCEOptimizationTask::computeCollisionCost(
     for (size_t i = 0; i < trajectories.size(); ++i)
     {
         costs[i] = computeCollisionCost(trajectories[i]);
+    }
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    
+    RCLCPP_INFO_THROTTLE(getLogger(), *node_->get_clock(), 5000, "CPU: %zu samples in %ld ms (%.1f samples/sec)",
+                     trajectories.size(), duration.count(),
+                     trajectories.size() / (duration.count() / 1000.0));
+    
+    return costs;
+}
+
+std::vector<float> PCEOptimizationTask::computeCollisionCostSimple(
+    const std::vector<Trajectory>& trajectories) const 
+{    
+    std::vector<float> costs;
+        
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    costs.resize(trajectories.size());
+    
+    // SEQUENTIAL (no OpenMP)
+    for (size_t i = 0; i < trajectories.size(); ++i)
+    {
+        costs[i] = computeCollisionCostSimple(trajectories[i]);
     }
     
     auto end = std::chrono::high_resolution_clock::now();
