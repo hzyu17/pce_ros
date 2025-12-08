@@ -227,40 +227,6 @@ Where `ε` is the `collision_clearance` parameter.
 | `/pce/distance_field` | MarkerArray | Distance field visualization |
 | `/ngd/collision_spheres` | MarkerArray | NGD collision spheres |
 
-### Color Coding
-
-Collision spheres are colored by distance to obstacles:
-- 🔴 **Red**: In collision (d < 0)
-- 🟡 **Yellow**: Within safety margin (0 < d < clearance)
-- 🟢 **Green**: Safe (d > clearance)
-
-## Troubleshooting
-
-### No Markers in RViz
-
-1. Check topic names match between config and RViz
-2. Verify `enable_collision_spheres: true` in config
-3. Ensure planning scene has collision objects
-
-### Planning Fails Immediately
-
-1. Check start/goal states are valid
-2. Verify planning group name matches config
-3. Check console for error messages
-
-### Slow Planning
-
-1. Reduce `num_samples` (try 1000-2000)
-2. Reduce `num_discretization` (try 20-30)
-3. Increase `collision_threshold` to skip distant checks
-
-### Build Errors
-
-Ensure all dependencies are installed:
-```bash
-sudo apt install ros-noetic-moveit ros-noetic-panda-moveit-config
-```
-
 ## License
 
 MIT.
