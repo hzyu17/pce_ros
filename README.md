@@ -23,6 +23,11 @@ PCE-ROS provides sampling-based trajectory optimization planners that integrate 
 #### Motion Planning results
 <img src="figures/pce_2.gif" width="400" alt="Motion Planning results">
 
+#### Benchmark Scenes results
+<img src="figures/kitchen.webp" width="350" alt="Motion Planning results">  <img src="figures/bookshelf.webp" width="350" alt="Motion Planning results">
+
+<img src="figures/table.webp" width="350" alt="Motion Planning results">  <img src="figures/box.webp" width="350" alt="Motion Planning results">
+
 ## Requirements
 
 ### Dependencies
