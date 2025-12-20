@@ -90,6 +90,7 @@ protected:
   
   // ROS
   std::shared_ptr<PCEVisualization> visualizer_;
+  bool enable_visualization_{false};
 };
 
 } // namespace pce_ros

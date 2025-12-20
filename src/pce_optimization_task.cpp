@@ -575,7 +575,7 @@ std::vector<Eigen::Vector3d> PCEOptimizationTask::getSphereLocations(
 }
 
 
-float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajectory) const
+float PCEOptimizationTask::computeStateCostSimple(const Trajectory& trajectory) const
 {
   if (!planning_scene_) 
   {
@@ -615,7 +615,7 @@ float PCEOptimizationTask::computeCollisionCostSimple(const Trajectory& trajecto
 }
 
 
-float PCEOptimizationTask::computeCollisionCost(const Trajectory& trajectory) const
+float PCEOptimizationTask::computeStateCost(const Trajectory& trajectory) const
 {
   if (!distance_field_)
   {
@@ -785,6 +785,7 @@ void PCEOptimizationTask::postIteration(int iteration_number, float cost,
 {
   // Use throttled logging to reduce overhead
   RCLCPP_INFO_THROTTLE(getLogger(), *node_->get_clock(), 1000, "PCE Iteration %d: cost = %.4f", iteration_number, cost);
+  if (!enable_visualization_) return;
   
   // Check if visualizer exists
   if (!visualizer_)
@@ -817,6 +818,7 @@ void PCEOptimizationTask::done(bool success, int total_iterations,
 {
   RCLCPP_INFO(getLogger(), "PCE optimization %s after %d iterations (cost: %.4f)",
            success ? "succeeded" : "failed", total_iterations, final_cost);
+  if (!enable_visualization_) return;
   
   if (success)
   {
@@ -825,8 +827,8 @@ void PCEOptimizationTask::done(bool success, int total_iterations,
   }
 }
 
-void PCEOptimizationTask::initialize(size_t num_dimensions, const PathNode& start,
-                                     const PathNode& goal, size_t num_nodes,
+void PCEOptimizationTask::initialize(size_t num_dimensions, const TrajectoryNode& start,
+                                     const TrajectoryNode& goal, size_t num_nodes,
                                      float total_time)
 {
   // Clear cached data
@@ -872,7 +874,7 @@ bool PCEOptimizationTask::trajectoryToRobotState(
   return true;
 }
 
-std::vector<float> PCEOptimizationTask::computeCollisionCost(
+std::vector<float> PCEOptimizationTask::computeStateCost(
     const std::vector<Trajectory>& trajectories) const 
 {    
     std::vector<float> costs;
@@ -884,7 +886,7 @@ std::vector<float> PCEOptimizationTask::computeCollisionCost(
     // SEQUENTIAL (no OpenMP)
     for (size_t i = 0; i < trajectories.size(); ++i)
     {
-        costs[i] = computeCollisionCost(trajectories[i]);
+        costs[i] = computeStateCost(trajectories[i]);
     }
     
     auto end = std::chrono::high_resolution_clock::now();
@@ -897,7 +899,7 @@ std::vector<float> PCEOptimizationTask::computeCollisionCost(
     return costs;
 }
 
-std::vector<float> PCEOptimizationTask::computeCollisionCostSimple(
+std::vector<float> PCEOptimizationTask::computeStateCostSimple(
     const std::vector<Trajectory>& trajectories) const 
 {    
     std::vector<float> costs;
@@ -909,7 +911,7 @@ std::vector<float> PCEOptimizationTask::computeCollisionCostSimple(
     // SEQUENTIAL (no OpenMP)
     for (size_t i = 0; i < trajectories.size(); ++i)
     {
-        costs[i] = computeCollisionCostSimple(trajectories[i]);
+        costs[i] = computeStateCostSimple(trajectories[i]);
     }
     
     auto end = std::chrono::high_resolution_clock::now();

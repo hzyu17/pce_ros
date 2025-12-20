@@ -49,6 +49,7 @@ void PCEPlanner::setup()
   if (visualizer_)
   {
     pce_task_->setVisualizer(visualizer_);
+    pce_task_->setEnableVisualization(enable_visualization_);
   }
   else
     RCLCPP_WARN(getLogger(), "  No visualizer available for PCEOptimizationTask");
@@ -204,30 +205,33 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   const Trajectory& initial_traj = pce_planner_->getCurrentTrajectory();
   
   // Compute collision cost (which caches sphere locations)
-  float initial_cost = pce_task_->computeCollisionCostSimple(initial_traj);
+  float initial_cost = pce_task_->computeStateCostSimple(initial_traj);
   RCLCPP_INFO(getLogger(), "Initial trajectory collision cost: %.4f", initial_cost);
   
   // Visualize the collision spheres
-  if (!visualizer_) {
-    RCLCPP_WARN(getLogger(), "Visualizer is NULL - markers will not be published!");
-  } else {
-    RCLCPP_INFO(getLogger(), "Visualizer is active, publishing markers...");
+  if (enable_visualization_)
+  {
+    if (!visualizer_) {
+      RCLCPP_WARN(getLogger(), "Visualizer is NULL - markers will not be published!");
+    } else {
+      RCLCPP_INFO(getLogger(), "Visualizer is active, publishing markers...");
 
-    visualizer_->visualizeCollisionSpheres(
-        initial_traj,
-        pce_task_->getCachedSphereLocations(),
-        robot_model_,
-        group_name_,
-        pce_task_->getCollisionClearance(),
-        nullptr
-    );
-    
-    visualizer_->visualizeTrajectory(
-        initial_traj,
-        robot_model_,
-        group_name_,
-        0
-    );
+      visualizer_->visualizeCollisionSpheres(
+          initial_traj,
+          pce_task_->getCachedSphereLocations(),
+          robot_model_,
+          group_name_,
+          pce_task_->getCollisionClearance(),
+          nullptr
+      );
+      
+      visualizer_->visualizeTrajectory(
+          initial_traj,
+          robot_model_,
+          group_name_,
+          0
+      );
+    }
   }
   
   RCLCPP_INFO(getLogger(), "--------------------------------------------------------");
@@ -240,7 +244,7 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
   RCLCPP_WARN(getLogger(), "Starting optimization in 5 seconds...");
   
   // Keep visualizing for 5 seconds
-  if (visualizer_)
+  if (visualizer_ && enable_visualization_)
   {
     visualizer_->visualizeCollisionSpheres(
         initial_traj,

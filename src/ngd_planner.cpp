@@ -52,6 +52,7 @@ void NGDPlanner::setup()
   if (visualizer_)
   {
     optimization_task_->setVisualizer(visualizer_);
+    optimization_task_->setEnableVisualization(enable_visualization_);
   }
   
   // Create PCE planner
@@ -186,44 +187,18 @@ void NGDPlanner::solve(planning_interface::MotionPlanResponse& res)
   Trajectory initial_traj = ngd_planner_->getCurrentTrajectory();
   
   // Compute collision cost (which caches sphere locations)
-  float initial_cost = optimization_task_->computeCollisionCostSimple(initial_traj);
+  float initial_cost = optimization_task_->computeStateCostSimple(initial_traj);
   RCLCPP_INFO(getLogger(), "Initial trajectory collision cost: %.4f", initial_cost);
   
   // Visualize the collision spheres
-  if (!visualizer_) {
-      RCLCPP_WARN(getLogger(), "Visualizer is NULL - markers will not be published!");
-  } else {
-      RCLCPP_INFO(getLogger(), "Visualizer is active, publishing markers...");
+  if (enable_visualization_)
+  {
+    if (!visualizer_) {
+        RCLCPP_WARN(getLogger(), "Visualizer is NULL - markers will not be published!");
+    } else {
+        RCLCPP_INFO(getLogger(), "Visualizer is active, publishing markers...");
 
-      visualizer_->visualizeCollisionSpheres(
-        initial_traj,
-        optimization_task_->getCachedSphereLocations(),
-        robot_model_,
-        group_name_,
-        optimization_task_->getCollisionClearance(),
-        nullptr
-    );
-    
-    visualizer_->visualizeTrajectory(
-        initial_traj,
-        robot_model_,
-        group_name_,
-        0
-    );
-
-    RCLCPP_INFO(getLogger(), "--------------------------------------------------------");
-    RCLCPP_INFO(getLogger(), "Check RViz to see the collision checking spheres.");
-    RCLCPP_INFO(getLogger(), "Total spheres per waypoint: %zu", 
-            optimization_task_->getCachedSphereLocations().empty() ? 0 : 
-            optimization_task_->getCachedSphereLocations()[0].size());
-    RCLCPP_INFO(getLogger(), "Total waypoints: %zu", initial_traj.nodes.size());
-    RCLCPP_INFO(getLogger(), "--------------------------------------------------------");
-    RCLCPP_WARN(getLogger(), "Starting optimization in 5 seconds...");
-    
-    // Keep visualizing for 5 seconds
-    if (visualizer_)
-    {
-      visualizer_->visualizeCollisionSpheres(
+        visualizer_->visualizeCollisionSpheres(
           initial_traj,
           optimization_task_->getCachedSphereLocations(),
           robot_model_,
@@ -231,10 +206,38 @@ void NGDPlanner::solve(planning_interface::MotionPlanResponse& res)
           optimization_task_->getCollisionClearance(),
           nullptr
       );
+      
+      visualizer_->visualizeTrajectory(
+          initial_traj,
+          robot_model_,
+          group_name_,
+          0
+      );
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 2 Hz = 500ms
-
   }
+
+  RCLCPP_INFO(getLogger(), "--------------------------------------------------------");
+  RCLCPP_INFO(getLogger(), "Check RViz to see the collision checking spheres.");
+  RCLCPP_INFO(getLogger(), "Total spheres per waypoint: %zu", 
+          optimization_task_->getCachedSphereLocations().empty() ? 0 : 
+          optimization_task_->getCachedSphereLocations()[0].size());
+  RCLCPP_INFO(getLogger(), "Total waypoints: %zu", initial_traj.nodes.size());
+  RCLCPP_INFO(getLogger(), "--------------------------------------------------------");
+  RCLCPP_WARN(getLogger(), "Starting optimization in 5 seconds...");
+  
+  // Keep visualizing for 5 seconds
+  if (visualizer_ && enable_visualization_)
+  {
+    visualizer_->visualizeCollisionSpheres(
+        initial_traj,
+        optimization_task_->getCachedSphereLocations(),
+        robot_model_,
+        group_name_,
+        optimization_task_->getCollisionClearance(),
+        nullptr
+    );
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 2 Hz = 500ms
   
   RCLCPP_INFO(getLogger(), "Starting optimization...");
   RCLCPP_INFO(getLogger(), "========================================================\n");

@@ -68,6 +68,8 @@ public:
     RCLCPP_INFO(node_->get_logger(), "PCEOptimizationTask: Visualizer set");
   }
 
+  void setEnableVisualization(bool flag) { enable_visualization_ = flag; }
+
   /**
    * @brief Set the motion planning request
    * @param planning_scene Planning scene with collision world
@@ -81,20 +83,20 @@ public:
       moveit_msgs::msg::MoveItErrorCodes& error_code);
 
   // Implement pce::Task interface
-  float computeCollisionCost(const Trajectory& trajectory) const override;
+  float computeStateCost(const Trajectory& trajectory) const override;
 
   // Multiple trajectories (new overload) - returns vector of costs
-  std::vector<float> computeCollisionCost(
+  std::vector<float> computeStateCost(
         const std::vector<Trajectory>& trajectories) const override;
 
   // Collision cost computation based on simple collision checking query
-  float computeCollisionCostSimple(const Trajectory& trajectory) const override;
+  float computeStateCostSimple(const Trajectory& trajectory) const override;
 
-  std::vector<float> computeCollisionCostSimple(
+  std::vector<float> computeStateCostSimple(
         const std::vector<Trajectory>& trajectories) const override;
 
   // // Compute batch collision costs for multiple trajectories on GPU
-  // std::vector<float> computeCollisionCostBatch(
+  // std::vector<float> computeStateCostBatch(
   //     const std::vector<Trajectory>& trajectories) const;
 
   bool filterTrajectory(Trajectory& trajectory, int iteration_number) override;
@@ -105,8 +107,8 @@ public:
   void done(bool success, int total_iterations, 
             float final_cost, const Trajectory& trajectory) override;
   
-  void initialize(size_t num_dimensions, const PathNode& start,
-                  const PathNode& goal, size_t num_nodes, 
+  void initialize(size_t num_dimensions, const TrajectoryNode& start,
+                  const TrajectoryNode& goal, size_t num_nodes, 
                   float total_time) override;
 
   // Set planning scene and initialize distance field
@@ -169,6 +171,7 @@ protected:
   
   // Get signed distance at a point
   double getDistanceAtPoint(const Eigen::Vector3d& point) const;
+  bool enable_visualization_{false};
 
 };
 
