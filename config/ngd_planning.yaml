@@ -22,12 +22,12 @@ ngd:
   panda_arm:
     ngd_planner:
       num_samples: 30
-      num_iterations: 25
+      num_iterations: 30
       learning_rate: 0.0002
       temperature: 0.9
       convergence_threshold: 0.001
-      num_discretization: 20
-      total_time: 3.75
+      num_discretization: 25
+      total_time: 3.25
 
     collision_clearance: 0.05
     collision_threshold: 0.05

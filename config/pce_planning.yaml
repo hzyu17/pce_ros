@@ -34,12 +34,12 @@ pce:
   
   panda_arm:
     pce_planner:
-      num_samples: 20
+      num_samples: 30
       num_iterations: 20
       eta: 1.0
       temperature: 1.0
       convergence_threshold: 0.0001
-      num_discretization: 20
+      num_discretization: 25
       total_time: 3.15
       node_collision_radius: 0.10
 
