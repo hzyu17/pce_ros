@@ -236,8 +236,8 @@ void NGDPlanner::solve(planning_interface::MotionPlanResponse& res)
         optimization_task_->getCollisionClearance(),
         nullptr
     );
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 2 Hz = 500ms
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 2 Hz = 500ms
   
   RCLCPP_INFO(getLogger(), "Starting optimization...");
   RCLCPP_INFO(getLogger(), "========================================================\n");

@@ -254,8 +254,8 @@ void PCEPlanner::solve(planning_interface::MotionPlanResponse& res)
         pce_task_->getCollisionClearance(),
         nullptr
     );
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 2 Hz = 500ms
   
   RCLCPP_INFO(getLogger(), "Starting optimization...");
   RCLCPP_INFO(getLogger(), "========================================================\n");
@@ -455,11 +455,15 @@ bool PCEPlanner::getConfigData(const rclcpp::Node::SharedPtr& node,
     // TODO: Try get_parameter_or function
     group_config.num_iterations = getParam<int>(node, group_param + ".num_iterations", 15);
     group_config.num_samples = getParam<int>(node, group_param + ".num_samples", 3000);
+    group_config.elite_ratio = getParam<double>(node, group_param + ".elite_ratio", 0.1);
+    group_config.reuse_ratio = getParam<double>(node, group_param + ".reuse_ratio", 0.5);
     group_config.temperature = getParam<double>(node, group_param + ".temperature", 1.5);
     group_config.eta = getParam<double>(node, group_param + ".eta", 1.0);
     group_config.num_discretization = getParam<int>(node, group_param + ".num_discretization", 20);
     group_config.total_time = getParam<double>(node, group_param + ".total_time", 5.0);
     group_config.node_collision_radius = getParam<double>(node, group_param + ".node_collision_radius", 0.1);
+    group_config.convergence_threshold = getParam<double>(node, group_param + ".convergence_threshold", 0.001);
+    group_config.num_iterations_after_valid = getParam<int>(node, group_param + ".num_iterations_after_valid", 0);
 
     // push into map
     config[group] = group_config;
@@ -487,8 +491,14 @@ bool PCEPlanner::getConfigData(const std::string& yaml_dict,
         group_config.num_iterations = planner_node["num_iterations"].as<int>();
       if (planner_node["num_samples"])
         group_config.num_samples = planner_node["num_samples"].as<int>();
+      if (planner_node["elite_ratio"])
+        group_config.elite_ratio = planner_node["elite_ratio"].as<double>();
+      if (planner_node["reuse_ratio"])
+        group_config.reuse_ratio = planner_node["reuse_ratio"].as<double>();
       if (planner_node["temperature"])
         group_config.temperature = planner_node["temperature"].as<double>();
+      if (planner_node["convergence_threshold"])
+        group_config.convergence_threshold = planner_node["convergence_threshold"].as<double>();
       if (planner_node["eta"])
         group_config.eta = planner_node["eta"].as<double>();
       if (planner_node["num_discretization"])
@@ -497,6 +507,8 @@ bool PCEPlanner::getConfigData(const std::string& yaml_dict,
         group_config.total_time = planner_node["total_time"].as<double>();
       if (planner_node["node_collision_radius"])
         group_config.node_collision_radius = planner_node["node_collision_radius"].as<double>();
+      if (planner_node["num_iterations_after_valid"])
+        group_config.num_iterations_after_valid = planner_node["num_iterations_after_valid"].as<int>();
     }
     return true;
   }
